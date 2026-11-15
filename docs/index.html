@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crypto Desk · paper trader</title>
+<style>
+:root{--bg:#EDF0F3;--card:#fff;--line:#D8DEE6;--ink:#101B2D;--muted:#5A6779;--acc:#0F6B66;--win:#11803F;--loss:#BF2F2F;--winbg:#DDF3E5;--lossbg:#F9E1E0}
+@media (prefers-color-scheme:dark){:root{--bg:#0B1017;--card:#131A24;--line:#263140;--ink:#E8EDF3;--muted:#93A1B3;--acc:#3CC4B7;--win:#4ADE80;--loss:#F87171;--winbg:#12301F;--lossbg:#381616}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:16px}
+.wrap{max-width:1000px;margin:0 auto;display:grid;gap:14px}
+h1{margin:0;font-size:24px;letter-spacing:.03em;text-transform:uppercase}h2{margin:0 0 10px;font-size:15px;letter-spacing:.06em;text-transform:uppercase}
+.sub{color:var(--muted);font-size:12.5px}.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.big{font-size:30px;font-weight:600}.pos{color:var(--win)}.neg{color:var(--loss)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.kpi .k{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}.kpi .v{font-size:21px;font-weight:600;margin-top:2px}.kpi .s{font-size:12px;color:var(--muted)}
+table{border-collapse:collapse;width:100%}th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
+th:first-child,td:first-child{text-align:left}.scroll{overflow-x:auto}
+.tag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11.5px;font-weight:600}.tag.w{background:var(--winbg);color:var(--win)}.tag.l{background:var(--lossbg);color:var(--loss)}
+.note{font-size:12px;color:var(--muted)}ul{margin:0;padding-left:18px}li{margin:3px 0}
+svg{width:100%;height:auto;display:block}
+.banner{padding:10px 12px;border-radius:8px;background:var(--lossbg);color:var(--loss);font-weight:600}
+</style></head><body><div class="wrap">
+<div class="head"><div><h1>Crypto Desk</h1><div class="sub" id="sub">Loading…</div></div><div style="text-align:right"><div class="sub">Equity (paper USDT)</div><div class="big mono" id="eq">–</div></div></div>
+<div id="brake"></div>
+<div class="kpis" id="kpis"></div>
+<div class="card"><h2>Equity</h2><div id="curve"></div></div>
+<div class="card"><h2>Open trades</h2><div class="scroll" id="open"></div></div>
+<div class="card"><h2>Recent closed trades</h2><div class="scroll" id="closed"></div></div>
+<div class="card"><h2>What it sees now</h2><div class="scroll" id="scan"></div></div>
+<div class="card"><h2>What it has learned</h2><div id="learn"></div></div>
+<p class="note">Paper money only. Fixed 10 USDT per trade, 15-minute candles from Binance, runs about every 10 minutes on GitHub Actions. The engine learns from every candle on every coin (shadow long and short ideas) and only trades when its measured edge after fees is positive. Past results do not guarantee future ones.</p>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const f2=n=>(n==null||!isFinite(n))?"–":Number(n).toFixed(2);
+const sg=n=>(n>0?"+":"")+f2(n);const cl=n=>n>0.004?"pos":n<-0.004?"neg":"";
+const px=x=>x>=100?x.toLocaleString("en",{maximumFractionDigits:2}):x>=1?x.toFixed(4):x>=0.01?x.toFixed(5):Number(x).toPrecision(4);
+const dt=t=>new Date(t).toLocaleString("en-SG",{timeZone:"Asia/Singapore",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",hour12:false});
+function curve(c,start){if(!c||c.length<2)return '<p class="note">Builds up after a few runs.</p>';
+  const W=900,H=220,L=44,R=10,T=10,B=24,v=c.map(x=>x[1]),mn=Math.min(...v,start),mx=Math.max(...v,start),sp=(mx-mn)||1;
+  const X=i=>L+i/(c.length-1)*(W-L-R),Y=y=>T+(mx-y)/sp*(H-T-B);
+  const d=c.map((x,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(x[1]).toFixed(1)).join(" ");
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Equity curve"><line x1="${L}" x2="${W-R}" y1="${Y(start)}" y2="${Y(start)}" stroke="var(--muted)" stroke-dasharray="4 4"/><text x="4" y="${Y(mx)+4}" fill="var(--muted)" font-size="11">${f2(mx)}</text><text x="4" y="${Y(mn)}" fill="var(--muted)" font-size="11">${f2(mn)}</text><path d="${d}" fill="none" stroke="var(--acc)" stroke-width="2"/><text x="${L}" y="${H-6}" fill="var(--muted)" font-size="11">${dt(c[0][0])}</text><text x="${W-R}" y="${H-6}" text-anchor="end" fill="var(--muted)" font-size="11">${dt(c[c.length-1][0])}</text></svg>`}
+async function load(){
+  let D;try{D=await (await fetch("data.json?t="+Date.now(),{cache:"no-store"})).json()}catch(e){$("sub").textContent="No data yet: waiting for the first run.";return}
+  const b=D.bot,start=b.startBalance||100,pl=b.equity-start,pf=b.grossLoss>0?b.grossWin/b.grossLoss:(b.grossWin>0?Infinity:null);
+  const mins=Math.round((Date.now()-D.updated)/60000);
+  $("sub").innerHTML=`Paper trader · ${esc(D.params.fixedStake)} USDT per trade · updated ${mins<1?"just now":mins+" min ago"} (${dt(D.updated)} SGT) · ${b.runs} runs`;
+  $("eq").textContent=f2(b.equity);
+  $("brake").innerHTML=b.brake?`<div class="banner">${esc(b.brake)}</div>`:"";
+  const k=[["Total P&L",`<span class="${cl(pl)}">${sg(pl)}</span>`,`started ${f2(start)}`],["Today",`<span class="${cl(b.today)}">${sg(b.today||0)}</span>`,"SGT day, closed trades"],
+    ["Win rate",b.closedN?Math.round(b.wins/b.closedN*100)+"%":"–",`${b.wins}W – ${b.losses}L`],["Profit factor",pf==null?"–":pf===Infinity?"∞":f2(pf),"won ÷ lost"],
+    ["Open",D.positions.length,`${(b.orders||[]).length} orders waiting`],["Max drawdown",f2(b.maxDD)+"%","worst dip from peak"]];
+  $("kpis").innerHTML=k.map(x=>`<div class="card kpi"><div class="k">${x[0]}</div><div class="v mono">${x[1]}</div><div class="s">${x[2]}</div></div>`).join("");
+  $("curve").innerHTML=curve(b.curve,start);
+  $("open").innerHTML=D.positions.length?`<table><tr><th>Coin</th><th>Side</th><th>Entry</th><th>Now</th><th>Stop</th><th>Target</th><th>P&L</th><th>Opened</th></tr>${D.positions.map(p=>`<tr><td><b>${esc(p.coin)}</b></td><td>${esc(p.side)}</td><td class="mono">${px(p.entry)}</td><td class="mono">${px(p.last)}</td><td class="mono">${px(p.stop)}</td><td class="mono">${px(p.target)}</td><td class="mono ${cl(p.uPnl)}">${sg(p.uPnl)}</td><td>${dt(p.entryTime)}</td></tr>`).join("")}</table>`:'<p class="note">No open trades.</p>';
+  $("closed").innerHTML=D.closed.length?`<table><tr><th>Coin</th><th>Side</th><th>Result</th><th>P&L</th><th>R</th><th>Held</th><th>Exit</th><th>Closed</th></tr>${D.closed.slice(0,40).map(t=>`<tr><td><b>${esc(t.coin)}</b></td><td>${esc(t.side)}</td><td><span class="tag ${t.pnl>0?"w":"l"}">${t.pnl>0?"Won":"Lost"}</span></td><td class="mono ${cl(t.pnl)}">${sg(t.pnl)}</td><td class="mono">${sg(t.R)}</td><td>${t.holdH}h</td><td>${esc(t.exitReason)}</td><td>${dt(t.exitTime)}</td></tr>`).join("")}</table>`:'<p class="note">No closed trades yet.</p>';
+  $("scan").innerHTML=`<table><tr><th>Coin</th><th>Price</th><th>24h</th><th>Decision</th><th style="text-align:left">Why</th></tr>${D.scan.map(s=>`<tr><td><b>${esc(s.coin)}</b></td><td class="mono">${s.price?px(s.price):"–"}</td><td class="mono ${cl(s.chg24)}">${s.chg24==null?"–":sg(s.chg24)+"%"}</td><td>${esc(s.decision||"")}</td><td style="text-align:left;white-space:normal;min-width:220px">${esc(s.why||"")}</td></tr>`).join("")}</table>`;
+  const L=D.learning||{};
+  $("learn").innerHTML=`<p class="note" style="margin-top:0">${(L.samples||0).toLocaleString()} shadow trade ideas learned from. A trade needs a measured edge of +${f2(L.minEvR)}R after fees.</p>`+
+    ((L.lessons||[]).length?`<ul>${L.lessons.slice().reverse().map(x=>`<li><span class="note">${esc(x.date||"")}</span> ${esc(x.text||"")}</li>`).join("")}</ul>`:"");
+}
+load();setInterval(load,60000);
+</script></body></html>

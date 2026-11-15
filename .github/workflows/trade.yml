@@ -1,0 +1,74 @@
+name: Crypto Desk paper trader
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # GitHub runs this roughly every 10 minutes (it can be a few minutes late)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: trader
+  cancel-in-progress: false
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The bot's memory (model, candles, open trades) lives in the Actions cache, not in git,
+      # so the repository does not grow every 10 minutes.
+      - name: Restore bot state
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: state-${{ github.run_id }}
+          restore-keys: state-
+
+      - name: Fall back to the daily backup if the cache is empty
+        run: |
+          if [ ! -f state/state.json ] && [ -f backup/state.json.gz ]; then
+            mkdir -p state && gunzip -c backup/state.json.gz > state/state.json
+            cp backup/trades.json state/trades.json 2>/dev/null || true
+          fi
+
+      - name: Run the trader
+        run: python bot.py
+
+      - name: Save bot state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: state-${{ github.run_id }}
+
+      - name: Daily backup to the repository (one small commit a day keeps the schedule alive)
+        run: |
+          today=$(TZ=Asia/Singapore date +%F)
+          if [ "$(cat backup/day.txt 2>/dev/null)" != "$today" ]; then
+            mkdir -p backup
+            gzip -c state/state.json > backup/state.json.gz
+            cp state/trades.json backup/trades.json
+            echo "$today" > backup/day.txt
+            git config user.name "crypto-desk-bot"
+            git config user.email "crypto-desk-bot@users.noreply.github.com"
+            git add backup
+            git commit -m "Daily backup $today" && git push || echo "nothing to push"
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - uses: actions/deploy-pages@v4
