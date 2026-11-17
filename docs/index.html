@@ -21,12 +21,15 @@ svg{width:100%;height:auto;display:block}
 .banner{padding:10px 12px;border-radius:8px;background:var(--lossbg);color:var(--loss);font-weight:600}
 .bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden}.bar>i{display:block;height:100%;background:var(--acc)}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.chip{border:1px solid var(--line);background:none;color:var(--ink);border-radius:99px;padding:3px 10px;font-size:12px;cursor:pointer}.chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+details{border-top:1px solid var(--line);padding:6px 0}summary{cursor:pointer;font-weight:600}.rule{font-size:13px;margin:6px 0 2px}
+.tag.p{background:var(--line);color:var(--muted)}.tag.a{background:var(--acc);color:#fff}
 .jr{display:grid;grid-template-columns:92px 74px 1fr;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}.jk{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--acc)}
 @media(max-width:600px){.jr{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
 <div class="head"><div><h1>Crypto Desk</h1><div class="sub" id="sub">Loading…</div></div><div style="text-align:right"><div class="sub">Equity (paper USDT)</div><div class="big mono" id="eq">–</div></div></div>
 <div id="brake"></div>
 <div class="kpis" id="kpis"></div>
+<div class="card"><h2>Playbook: what it trades and why</h2><div id="pb"><p class="note">Waiting for the first practice session.</p></div></div>
 <div class="card"><h2>Today vs 100 USDT target</h2><div id="target"></div></div>
 <div class="card"><h2>Equity</h2><div id="curve"></div></div>
 <div class="card"><h2>Open trades</h2><div class="scroll" id="open"></div></div>
@@ -36,7 +39,7 @@ svg{width:100%;height:auto;display:block}
 <div class="card"><h2>Backtest: this engine on past prices</h2><div id="bt"><p class="note">No backtest yet. Run one from the Actions tab → "Crypto Desk backtest" → Run workflow (it also runs every Sunday).</p></div></div>
 <div class="card"><h2>Learning journal</h2><div class="chips" id="jchips"></div><div id="journal"></div></div>
 <div class="card"><h2>What it has learned</h2><div id="learn"></div></div>
-<p class="note">Paper money only. Trades are sized by risk (about 2% of equity at risk, more when confident and on a good run), 15-minute candles from Binance, runs about every 10 minutes on GitHub Actions. Protections pause trading after 3 losses in a row or a 6% losing day. The engine learns from every candle on every coin (shadow long and short ideas) and only trades when its measured edge after fees is positive. Past results do not guarantee future ones.</p>
+<p class="note">Paper money only. The bot learns like a day trader: a playbook of setups, practised on past charts every 6 hours and traded only after passing an exam on unseen weeks. About 2% of equity at risk per trade (half while a setup is on probation), 15-minute candles from Binance, runs about every 10 minutes on GitHub Actions. Protections pause trading after 3 losses in a row or a 6% losing day. Past results do not guarantee future ones.</p>
 </div>
 <script>
 const $=id=>document.getElementById(id);
@@ -54,7 +57,7 @@ async function load(){
   let D;try{D=await (await fetch("data.json?t="+Date.now(),{cache:"no-store"})).json()}catch(e){$("sub").textContent="No data yet: waiting for the first run.";return}
   const b=D.bot,start=b.startBalance||100,pl=b.equity-start,pf=b.grossLoss>0?b.grossWin/b.grossLoss:(b.grossWin>0?Infinity:null);
   const mins=Math.round((Date.now()-D.updated)/60000);
-  $("sub").innerHTML=`Paper trader · ${D.params.fixedStake?esc(D.params.fixedStake)+" USDT per trade":"risk "+Math.round((D.params.riskPct||0.02)*100)+"% per trade"} · updated ${mins<1?"just now":mins+" min ago"} (${dt(D.updated)} SGT) · ${b.runs} runs`;
+  $("sub").innerHTML=`Paper trader · playbook trader v${esc(b.engineVersion||8)} · updated ${mins<1?"just now":mins+" min ago"} (${dt(D.updated)} SGT) · ${b.runs} runs`;
   $("eq").textContent=f2(b.equity);
   $("brake").innerHTML=b.brake?`<div class="banner">${esc(b.brake)}</div>`:"";
   const k=[["Total P&L",`<span class="${cl(pl)}">${sg(pl)}</span>`,`started ${f2(start)}`],["Today",`<span class="${cl(b.today)}">${sg(b.today||0)}</span>`,"SGT day, closed trades"],
@@ -71,7 +74,7 @@ async function load(){
   const rows=Object.entries(cs).map(([k,v])=>[k,v.length,v.filter(x=>x>0).length,v.reduce((a,x)=>a+x,0)]).sort((a,c)=>c[3]-a[3]);
   $("acc").innerHTML=`<div class="kpis" style="margin-bottom:10px"><div class="kpi"><div class="k">Last ${rc.length} trades</div><div class="v mono">${rc.length?Math.round(rw/rc.length*100)+"%":"–"}</div><div class="s">win rate</div></div><div class="kpi"><div class="k">All time</div><div class="v mono">${b.closedN?Math.round(b.wins/b.closedN*100)+"%":"–"}</div><div class="s">${b.wins}W – ${b.losses}L</div></div><div class="kpi"><div class="k">Entry bar</div><div class="v mono">${Math.round((D.params.minProb||0)*100)}%</div><div class="s">min win chance, edge ≥ +${f2(D.params.minEvR)}R</div></div></div>`+
    (rows.length?`<div class="scroll"><table><tr><th>Coin · side</th><th>Trades</th><th>Wins</th><th>Total R</th><th>Status</th></tr>${rows.map(r=>`<tr><td><b>${esc(r[0].replace(":"," "))}</b></td><td>${r[1]}</td><td>${Math.round(r[2]/r[1]*100)}%</td><td class="mono ${cl(r[3])}">${sg(r[3])}</td><td>${ben.has(r[0])?'<span class="tag l">Benched</span>':'<span class="tag w">Active</span>'}</td></tr>`).join("")}</table></div>`:'<p class="note">Per-coin record builds up as v6 trades close (last 12 trades per coin and side).</p>');
-  window._J=D.journal||[];drawJ();
+  window._J=D.journal||[];drawJ();drawPB(D);
   const L=D.learning||{};
   $("learn").innerHTML=`<p class="note" style="margin-top:0">${(L.samples||0).toLocaleString()} shadow trade ideas learned from. A trade needs a measured edge of +${f2(L.minEvR)}R after fees.</p>`+
     ((L.lessons||[]).length?`<ul>${L.lessons.slice().reverse().map(x=>`<li><span class="note">${esc(x.date||"")}</span> ${esc(x.text||"")}</li>`).join("")}</ul>`:"");
@@ -95,7 +98,22 @@ async function loadBT(){
   <div class="scroll" style="margin-top:10px">${tbl(s.byStrategy,"Setup")}</div>
   ${set.length?`<p class="note">Stop/target settings measured on ${B.shadow.n} shadow ideas (avg net R, after fees): ${set.map(x=>`<b>${esc(x[0])}</b> ${sg(x[1])}R`).join(" · ")}. Average shadow idea: ${sg(B.shadow.avgR)}R.</p>`:""}`;
 }
-let JK="all";const JL={all:"All",trade:"Trades",daily:"Daily report",tuning:"Tuning",bench:"Benched",protect:"Protections",upgrade:"Upgrades"};
+let JK="all";const JL={all:"All",trade:"Trades",learn:"Learning",practice:"Practice",daily:"Daily report",protect:"Protections",upgrade:"Upgrades"};
+const ST={active:['<span class="tag a">Live · full size</span>',0],probation:['<span class="tag w">Live · half size</span>',1],retired:['<span class="tag l">Benched live</span>',2],practice:['<span class="tag p">Practising</span>',3]};
+function drawPB(D){const P=D.playbook,S=(D.bot&&D.bot.setups)||{};if(!P){return}
+  const rows=P.setups.map(s=>{const l=S[s.id];let st=!s.enabled?"practice":(l&&l.ver===s.ver?l.status:"probation");if(!s.enabled)st="practice";const rec=(l&&l.ver===s.ver&&l.rec)||[];return {s,st,rec}})
+    .sort((a,b)=>ST[a.st][1]-ST[b.st][1]||b.s.val.avgR-a.s.val.avgR);
+  const live=rows.filter(r=>r.st!=="practice"),prac=rows.filter(r=>r.st==="practice");
+  const ex=s=>`${s.n} trades · ${sg(s.avgR)}R each · ${Math.round(s.win*100)}% wins`;
+  const card=r=>`<details ${r.st!=="practice"?"open":""}><summary>${esc(r.s.label)} <span class="note">(${esc(r.s.side)})</span> ${ST[r.st][0]}</summary>
+    <div class="rule">${esc(r.s.plain)}</div>
+    <div class="note">Practice (${dt(P.from).split(",")[0]} – ${dt(P.split).split(",")[0]}): ${ex(r.s.train)} · Exam on unseen weeks: <b>${ex(r.s.val)}</b> · Live: ${r.rec.length?`${r.rec.length} trades, <b class="${cl(r.rec.reduce((a,x)=>a+x,0))}">${sg(r.rec.reduce((a,x)=>a+x,0))}R</b>`:"no trades yet"}</div></details>`;
+  $("pb").innerHTML=`<p style="margin-top:0"><b>${esc(P.summary)}</b></p><p class="note">Last practice session ${dt(P.generated)} SGT · ${P.tested.toLocaleString()} rule versions tried · next one within 6 hours. A setup is only traded after it makes money in practice <i>and</i> in an exam on the most recent 2 weeks it did not study (t-stat 2+, profitable in both halves of practice). New setups start at half size; 8 live trades in profit promote it to full size; a bad run sends it back to practice.</p>`+
+    (live.length?live.map(card).join(""):'<p class="note">No setup is good enough to trade yet, so it sits in cash and keeps practising. That is the right call: most rule versions lose after fees.</p>')+
+    (prac.length?`<details><summary>Still practising (${prac.length})</summary>${prac.map(r=>`<div class="rule"><b>${esc(r.s.label)}</b> <span class="note">(${esc(r.s.side)})</span>: best version so far ${sg(r.s.train.avgR)}R in practice (${r.s.train.n} trades), ${sg(r.s.val.avgR)}R in the exam (${r.s.val.n} trades).</div>`).join("")}</details>`:"")+
+    `<details><summary>Practice notes</summary>${(P.notes||[]).slice(0,40).map(n=>`<div class="jr"><span class="note">${dt(n.t)}</span><span class="jk">Practice</span><span>${esc(n.text)}</span></div>`).join("")}</details>`+
+    ((D.archive||[]).length?`<p class="note">Previous engine (${esc(D.archive[0].engine)}): ${D.archive[0].trades} trades, finished at ${f2(D.archive[0].endEq)} USDT from ${f2(D.archive[0].startEq)}.</p>`:"");
+}
 function drawJ(){const J=(window._J||[]).slice().reverse();
   $("jchips").innerHTML=Object.entries(JL).map(([k,v])=>`<button class="chip ${k===JK?"on":""}" onclick="JK='${k}';drawJ()">${v}</button>`).join("");
   const S=J.filter(x=>JK==="all"||x.kind===JK).slice(0,60);

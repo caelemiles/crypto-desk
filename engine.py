@@ -652,6 +652,8 @@ def close_position(bot, model, pos, price, t, reason, closed):
     k = cs_key(pos["coin"], pos["side"])
     cs = bot.setdefault("byCS", {})
     cs[k] = (cs.get(k, []) + [round(R, 2)])[-12:]
+    if pos.get("setupId"):
+        setup_result(bot, model, pos, R, pnl, t)
     tr = dict(pos)
     tr.update({"status": "closed", "exitTime": t, "exitPrice": round(fill, 8), "exitReason": reason,
                "pnl": round(pnl, 2), "pnlPct": round(pnl / max(0.01, pos.get("notional0", pos["notional"])) * 100, 2), "R": round(R, 2),
@@ -670,7 +672,11 @@ def close_position(bot, model, pos, price, t, reason, closed):
                else "the signal flipped, so it got out early" if reason.startswith("AI exit") else f"{reason.lower()}")
         lesson = f"Lost {abs(pnl):.2f} USDT ({R:+.2f}R) on {pos['coin']} {pos['side']}: {why}."
     lesson += f" {pos['coin']} {pos['side']}s are now {w}/{len(rec)} wins."
-    if sw is not None: lesson += f" Trust in {pos.get('leadLabel', 'this setup')} is now {sw:.2f}."
+    sst = bot.get("setups", {}).get(pos.get("setupId") or "")
+    if sst and sst.get("rec"):
+        lesson += (f" {pos.get('leadLabel')} ({pos['side']}) live record: {sum(1 for x in sst['rec'] if x > 0)}/{len(sst['rec'])} wins, "
+                   f"{sum(sst['rec']):+.1f}R ({sst['status']}).")
+    elif sw is not None and not pos.get("setupId"): lesson += f" Trust in {pos.get('leadLabel', 'this setup')} is now {sw:.2f}."
     jot(model, t, "trade", lesson)
     closed.append(tr)
 
@@ -701,14 +707,14 @@ def manage_positions(bot, model, hist, live, now, scan_x):
             fav = (pos["best"] - pos["entry"]) if long else (pos["entry"] - pos["best"])
             r_now = fav / pos["risk0"]
             sgn = 1 if long else -1
-            if r_now >= p.get("partialAtR", 99) and not pos.get("partialPnl") and pos["qty"] > 0:
+            if r_now >= pos.get("partialAtR", p.get("partialAtR", 99)) and not pos.get("partialPnl") and pos["qty"] > 0:
                 lvl = pos["entry"] + sgn * p["partialAtR"] * pos["risk0"]
                 partial_close(bot, model, pos, lvl, t + BAR, p.get("partialFrac", 0.5))
                 pos["target"] = round(pos["entry"] + sgn * p.get("runnerR", 4.0) * pos["risk0"], 10)
-            if r_now >= p["beAfterR"] and (pos["stop"] - pos["entry"]) * sgn < 0:
+            if r_now >= pos.get("beAfterR", p["beAfterR"]) and (pos["stop"] - pos["entry"]) * sgn < 0:
                 pos["stop"] = round(pos["entry"] * (1 + sgn * 2 * p["feePct"]), 8)
                 pos.setdefault("events", []).append({"t": t + BAR, "e": "Stop moved to breakeven"})
-            if r_now >= p["trailAfterR"]:
+            if r_now >= pos.get("trailAfterR", p["trailAfterR"]):
                 trail = pos["best"] - sgn * max(p.get("trailAtr", 1.5) * pos["atr"], 0.6 * pos["risk0"])
                 if (trail - pos["stop"]) * sgn > 0:
                     if not any(e["e"].startswith("Trailing") for e in pos.get("events", [])):
@@ -716,11 +722,12 @@ def manage_positions(bot, model, hist, live, now, scan_x):
                     pos["stop"] = round(trail, 8)
             age = t + BAR - pos["entryTime"]
             cur_r = ((c - pos["entry"]) * sgn) / pos["risk0"] if pos["risk0"] > 0 else 0
-            if age >= p.get("hardStopH", p["timeStopH"]) * H or (age >= p["timeStopH"] * H and cur_r < 0.3):
-                lab = p.get("hardStopH", p["timeStopH"]) if age >= p.get("hardStopH", p["timeStopH"]) * H else p["timeStopH"]
+            ts = pos.get("timeStopH", p["timeStopH"]); hs = pos.get("hardStopH", p.get("hardStopH", ts))
+            if age >= hs * H or (age >= ts * H and cur_r < 0.3):
+                lab = hs if age >= hs * H else ts
                 close_position(bot, model, pos, c, t + BAR, f"Time stop ({lab}h)", closed); done = True; break
         if done: continue
-        sx = scan_x.get((coin, pos["side"]))
+        sx = None if pos.get("setupId") else scan_x.get((coin, pos["side"]))
         if sx and coin in live and sx.get("evR", 0) < -0.3 and sx["ens"] < -0.25:
             close_position(bot, model, pos, live[coin], now, "AI exit: signal flipped against the trade", closed)
             continue
@@ -771,7 +778,7 @@ def make_position(bot, model, coin, side, price, qty, risk_ps, atr_v, entry_t, e
     fee = notional * p["feePct"]
     margin = notional / p.get("lev", 1.0)
     bot["cash"] -= margin + fee; bot["fees"] += fee; bot["tradeSeq"] += 1
-    pos = {"id": f"T{bot['tradeSeq']:04d}", "coin": coin, "side": side, "status": "open", "entryTime": entry_t,
+    pos = {"id": f"{bot.get('idPrefix', 'T')}{bot['tradeSeq']:04d}", "coin": coin, "side": side, "status": "open", "entryTime": entry_t,
            "entryBar": entry_bar, "entry": price, "qty": qty, "notional": round(notional, 2), "notional0": round(notional, 2), "margin": margin,
            "stop": price - sgn * risk_ps, "stop0": price - sgn * risk_ps, "target": price + sgn * p["rr"] * risk_ps,
            "risk0": risk_ps, "riskCash": round(qty * risk_ps, 2), "atr": atr_v, "rr": p["rr"],
@@ -906,6 +913,146 @@ def global_halt(bot, model, eq, now):
     return None
 
 
+# ---------------------------------------------------------------- v8: the playbook trader
+STATUS_SIZE = {"probation": 0.5, "active": 1.0}
+
+
+def setup_result(bot, model, pos, R, pnl, t):
+    """Live record per setup, and the human-style promotion / demotion rules."""
+    st = bot.setdefault("setups", {}).get(pos["setupId"])
+    if not st or st.get("ver") != pos.get("setupVer"): return
+    st["rec"] = (st.get("rec", []) + [round(R, 2)])[-30:]
+    st["n"] = st.get("n", 0) + 1; st["wins"] = st.get("wins", 0) + (pnl > 0); st["pnl"] = round(st.get("pnl", 0) + pnl, 2)
+    rec = st["rec"]; lab = pos.get("leadLabel", pos["setupId"])
+    gw = sum(x for x in rec if x > 0); gl = -sum(x for x in rec if x < 0); pf = gw / gl if gl > 0 else 9
+    last10 = rec[-10:]
+    if st["status"] == "probation" and len(rec) >= 8 and sum(rec) > 0 and pf >= 1.1:
+        st["status"] = "active"
+        jot(model, t, "learn", f"Promoted {lab} ({pos['side']}) to full size: {sum(1 for x in rec if x > 0)}/{len(rec)} live wins, "
+                               f"{sum(rec):+.1f}R in total. It works for real, not just in practice.")
+    elif st["status"] in ("probation", "active") and len(last10) >= 6 and sum(last10) <= -3:
+        st["status"] = "retired"
+        jot(model, t, "learn", f"Stopped trading {lab} ({pos['side']}): {sum(last10):+.1f}R over its last {len(last10)} live trades. "
+                               "What worked in practice is not working live right now, so it goes back to practice.")
+    elif st["status"] == "active" and len(last10) >= 8 and sum(last10) < 0:
+        st["status"] = "probation"
+        jot(model, t, "learn", f"Cut {lab} ({pos['side']}) back to half size: {sum(last10):+.1f}R over its last {len(last10)} trades.")
+
+
+def sync_playbook(bot, model, playbook, now):
+    """Bring live setup records in line with the latest practice session."""
+    sts = bot.setdefault("setups", {})
+    if playbook.get("generated") and playbook["generated"] != bot.get("playbookSeen"):
+        bot["playbookSeen"] = playbook["generated"]
+        jot(model, now, "practice", playbook.get("summary", "New practice session."))
+    for s in playbook.get("setups", []):
+        cur = sts.get(s["id"])
+        if s.get("enabled"):
+            if not cur or cur.get("ver") != s["ver"]:
+                sts[s["id"]] = {"ver": s["ver"], "status": "probation", "rec": [], "n": 0, "wins": 0, "pnl": 0.0, "since": now,
+                                "label": s["label"], "side": s["side"]}
+                jot(model, now, "learn", f"{'Updated' if cur else 'New'} setup: {s['label']} ({s['side']}). It passed the exam "
+                                         f"({s['val']['n']} unseen trades, {s['val']['avgR']:+.2f}R each), so it trades live at half size until it proves itself.")
+        elif cur and cur.get("status") != "practice":
+            cur["status"] = "practice"
+            jot(model, now, "learn", f"Back to practice: {s['label']} ({s['side']}) no longer passes the exam on recent data.")
+
+
+def playbook_trade(bot, model, hist, live, now, playbook, scan, risk_mult, brake):
+    import brain
+    p = model["params"]
+    sync_playbook(bot, model, playbook, now)
+    sts = bot.get("setups", {})
+    live_setups = [s for s in playbook.get("setups", []) if s.get("enabled") and sts.get(s["id"], {}).get("status") in STATUS_SIZE
+                   and sts[s["id"]].get("ver") == s["ver"]]
+    by_coin = {it["coin"]: it for it in scan}
+    held = {q["coin"] for q in bot["positions"]}
+    eq = equity(bot, live)
+    risk_pct, _ = risk_now(bot, p)
+    seen = bot.setdefault("lastSig", {})
+    btc = hist.get("BTC", [])[-420:]
+    cands = []
+    for coin, bars in hist.items():
+        it = by_coin.setdefault(coin, {"coin": coin, "price": live.get(coin)})
+        if coin not in live or len(bars) < 200:
+            continue
+        lastbar = bars[-1][0]
+        if coin in held:
+            it["decision"], it["why"] = "Holding", "position already open"; continue
+        if not live_setups:
+            it["decision"], it["why"] = "Practising", "no setup has passed its exam yet, so it watches and practises"; continue
+        if seen.get(coin) == lastbar:
+            it.setdefault("decision", "Watching"); it.setdefault("why", "waiting for the next 15m candle to close"); continue
+        seen[coin] = lastbar
+        hits = []
+        ser = {}
+        for s in live_setups:
+            if s["side"] not in ser: ser[s["side"]] = brain.make_series(bars[-420:], btc, s["side"])
+            S = ser[s["side"]]
+            if brain.signal_at(S, S.n - 1, s["setup"], s["genes"]):
+                hits.append(s)
+        if not hits:
+            it["decision"], it["why"] = "Watching", f"none of its {len(live_setups)} live setups triggered on the last candle"; continue
+        S_long = ser.get("long") or brain.make_series(bars[-420:], btc, "long")
+        for s in hits:
+            cands.append((sts[s["id"]]["status"] == "active", s["val"]["avgR"], coin, s, S_long.atr[S_long.n - 1], it, lastbar))
+    cands.sort(key=lambda c: (not c[0], -c[1]))
+    opened = []
+    for active, _, coin, s, a, it, lastbar in cands:
+        side = s["side"]; g = s["genes"]; reasons = []
+        if coin in held: continue
+        if risk_mult == 0: reasons.append(brake)
+        if len(bot["positions"]) >= p["maxOpen"]: reasons.append(f"already {p['maxOpen']} open positions")
+        elif sum(1 for q in bot["positions"] if q["side"] == side) >= p.get("maxSameSide", 3):
+            reasons.append(f"already {p.get('maxSameSide', 3)} {side} trades open")
+        cb = coin_block(bot, p, it, now)
+        if cb: reasons.append(cb)
+        if reasons:
+            it["decision"], it["why"] = "No trade", f"{s['label']} triggered, but " + "; ".join(r for r in reasons if r); continue
+        st = sts[s["id"]]; size = STATUS_SIZE[st["status"]]
+        sgn = 1 if side == "long" else -1
+        price = live[coin] * (1 + sgn * p["slipPct"])
+        risk_ps = g["stop"] * a
+        if risk_ps <= 0: continue
+        qty = eq * risk_pct * size * risk_mult / risk_ps
+        notional = min(qty * price, eq * p["maxNotionalPct"], bot["cash"] * 0.98 * p.get("lev", 1.0))
+        if notional < p.get("minNotional", 5):
+            it["decision"], it["why"] = "No trade", f"{s['label']} triggered, but there is not enough free cash"; continue
+        hold_h = g["hold"] / 4
+        meta = {"setupId": s["id"], "setupVer": s["ver"], "lead": s["setup"], "leadLabel": s["label"], "via": "playbook",
+                "p": s["val"]["win"], "expR": s["val"]["avgR"], "conf": size, "scores": {}, "top": [], "minProb": None,
+                "timeStopH": hold_h, "hardStopH": hold_h, "partialAtR": 99, "trailAfterR": 99,
+                "beAfterR": 1.0 if g["be"] else 99, "sizeNote": "half size (probation)" if size < 1 else "full size"}
+        pos = make_position(bot, model, coin, side, price, notional / price, risk_ps, a, now, lastbar, meta)
+        pos["target"] = round(price + sgn * g["rr"] * risk_ps, 12); pos["rr"] = g["rr"]
+        rec = st.get("rec", [])
+        pos["thesis"] = (f"{s['label']} on {coin} ({meta['sizeNote']}). Rule: {s.get('plain', '')} "
+                         f"Practice: {s['train']['n']} trades at {s['train']['avgR']:+.2f}R, exam week {s['val']['n']} at {s['val']['avgR']:+.2f}R. "
+                         f"Live so far: {len(rec)} trades, {sum(rec):+.1f}R.")
+        jot(model, now, "trade", f"Took a {s['label']} {'long' if side == 'long' else 'short'} on {coin} at {fmt_px(price)} "
+                                 f"({meta['sizeNote']}, {pos['riskCash']:.2f} USDT at risk). Stop {fmt_px(pos['stop'])}, target {fmt_px(pos['target'])}.")
+        held.add(coin); opened.append(pos)
+        it["decision"] = "BUY" if side == "long" else "SELL SHORT"
+        it["why"] = f"{s['label']} triggered ({meta['sizeNote']})"
+    scan[:] = list(by_coin.values())
+    return opened
+
+
+def playbook_review(bot, model, now):
+    today = day_key(now); last = bot.get("reviewDay"); bot["reviewDay"] = today
+    if not last or last == today: return
+    pnl = bot.get("daily", {}).get(last, 0.0)
+    sts = bot.get("setups", {})
+    parts = [f"Report card for {last}: {pnl:+.2f} USDT."]
+    act = [v for v in sts.values() if v.get("status") in STATUS_SIZE]
+    parts.append(f"Trading {len(act)} setup(s) live" + (": " + ", ".join(f"{v.get('label')} {v.get('side')} ({v['status']}, {sum(v.get('rec', [])):+.1f}R live)" for v in act) if act else ", the rest are in practice") + ".")
+    best = sorted([v for v in sts.values() if v.get("rec")], key=lambda v: -sum(v["rec"]))
+    if best:
+        parts.append(f"Best so far: {best[0].get('label')} {best[0].get('side')} ({sum(best[0]['rec']):+.1f}R).")
+        if sum(best[-1]["rec"]) < 0: parts.append(f"Weakest: {best[-1].get('label')} {best[-1].get('side')} ({sum(best[-1]['rec']):+.1f}R).")
+    jot(model, now, "daily", " ".join(parts))
+
+
 def patterns(model):
     res = model["resolved"]
     out = {}
@@ -978,22 +1125,44 @@ def run(state, new, now):
         jot(model, now, "upgrade", txt)
     for k2, v2 in V7_PARAMS.items(): model["params"].setdefault(k2, v2)
     model["params"].update(state.get("overrides") or {})  # backtester what-if settings
-    model["engineVersion"] = 7
+    model["engineVersion"] = 8
     bot = state.get("bot") or default_bot(now=now)
     hist = state.get("history") or {}
     hist, live, warns = merge_history(hist, new, now)
+    mig_closed = []
+    if not model.get("v8"):
+        # v8 (17 Nov): the playbook trader. Close the old engine's trades, archive its record, start a fresh 100 USDT account.
+        for pos in list(bot["positions"]):
+            px = live.get(pos["coin"], pos.get("last", pos["entry"]))
+            close_position(bot, model, pos, px, now, "Engine upgrade (v8)", mig_closed)
+        bot["positions"] = []; bot["orders"] = []
+        eq_old = round(equity(bot, live), 2)
+        if bot.get("closedN"):
+            model.setdefault("archive", []).append({
+                "engine": "v1-v7 machine-learning trader", "from": bot.get("startedAt"), "to": now, "startEq": bot.get("startBalance"),
+                "endEq": eq_old, "trades": bot.get("closedN"), "wins": bot.get("wins"),
+                "pf": round(bot["grossWin"] / bot["grossLoss"], 2) if bot.get("grossLoss") else None})
+        bot = default_bot(now=now); bot["idPrefix"] = "P"
+        model["v8"] = True
+        txt = ("v8: the bot now learns day trading like a person. It keeps a playbook of classic setups (trend pullbacks, breakouts, "
+               "opening-range breaks, VWAP reclaims, stop-hunt reversals, momentum bursts; long and short), practises them on past charts "
+               "every 6 hours, and only trades a setup once it has passed an exam on recent weeks it did not study. New setups trade at half "
+               "size until they prove themselves live; setups that stop working go back to practice. Fresh 100 USDT paper account"
+               + (f" (the old engine finished at {eq_old:.2f} USDT)." if eq_old else "."))
+        model.setdefault("lessons", []).append({"date": day_key(now), "text": txt}); model["lessons"] = model["lessons"][-60:]
+        jot(model, now, "upgrade", txt)
+    playbook = state.get("playbook")
     p0 = model["params"].get("minProb"); cfg0 = (model.get("settings") or {}).get("active")
-    learning = learn(model, hist, now)
+    learning = {"newIdeas": 0, "resolved": 0, "wins": 0, "bySide": {}, "settings": model.get("settings"), "threshold": {}}
     p = model["params"]
-    if p0 is not None and p["minProb"] != p0:
+    if False:
         jot(model, now, "tuning", f"Win-chance bar moved {p0:.0%} → {p['minProb']:.0%}: "
             + ("recent ideas above the old bar were not paying after fees, so it got pickier." if p["minProb"] > p0
                else "ideas just below the bar have been paying, so it lets a few more through."))
     cfg1 = (learning.get("settings") or {}).get("active")
-    if cfg0 and cfg1 and cfg1 != cfg0:
+    if False:
         jot(model, now, "tuning", f"Switched stop/target setting {cfg0} → {cfg1} (stop in ATRs x reward:risk): it measured better after fees on thousands of shadow ideas.")
-    daily_review(bot, model, now)
-    build_calib(model)
+    playbook_review(bot, model, now)
 
     scan, scan_x = [], {}
     btc_tr = None
@@ -1039,10 +1208,10 @@ def run(state, new, now):
     if halt: risk_mult, brake = 0.0, halt
 
     risk_pct, risk_note = risk_now(bot, p)
-    opened = []
+    opened = playbook_trade(bot, model, hist, live, now, playbook or {}, scan, risk_mult, brake)
     held = {pos["coin"] for pos in bot["positions"]}
     just_closed = {tr["coin"] for tr in closed}
-    cands = sorted([it for it in scan if "sides" in it], key=lambda it: -it["sides"][it["best"]]["evR"])
+    cands = []  # v8: entries come from the playbook only
     for it in cands:
         coin, side = it["coin"], it["best"]
         sd = it["sides"][side]; sx = scan_x[(coin, side)]
@@ -1080,7 +1249,7 @@ def run(state, new, now):
         it["decision"] = "BUY" if long else "SELL SHORT"
         it["why"] = f"{sd['p']:.0%} calibrated win chance, measured edge {exp_R:+.2f}R, led by {sd['leadLabel']}"
 
-    placed = place_orders(bot, model, hist, live, now, scan, scan_x, risk_mult, brake)
+    placed = []
     bench = sorted(k for k in bot.get("byCS", {}) if is_blocked(bot, *k.split(":")))
     old = set(bot.get("benched", []))
     for k in bench:
@@ -1095,7 +1264,7 @@ def run(state, new, now):
     bot["curve"] = (bot["curve"] + [[now, round(eq, 2), live.get("BTC")]])[-1000:]
     bot["lastRunAt"] = now; bot["runs"] += 1; bot["brake"] = brake
     bot["dailyTarget"] = p.get("dailyTarget", 100.0); bot["today"] = bot["daily"].get(day_key(now), 0.0)
-    bot["riskNote"] = risk_note; bot["engineVersion"] = 7
+    bot["riskNote"] = risk_note; bot["engineVersion"] = 8
     bot["readiness"] = readiness(bot, now)
     for g in bot.get("goals", []):
         if eq >= g and str(g) not in bot["goalHits"]:
@@ -1105,12 +1274,9 @@ def run(state, new, now):
     model["calibration"] = calibration(model)
     model["settings"] = learning.get("settings")
     model["patterns"] = patterns(model)
-    model["learning"] = (model["learning"] + [{
-        "t": now, "newIdeas": learning["newIdeas"], "resolved": learning["resolved"], "wins": learning["wins"],
-        "bySide": learning["bySide"], "minProb": p["minProb"],
-        "strat": {sd: {k: model["sides"][sd]["strat"][k]["w"] for k in STRATS} for sd in SIDES}}])[-60:]
 
     opened = filled + opened
+    closed = mig_closed + closed
     return {"bot": bot, "model": model, "history": hist, "opened": opened, "closed": closed, "scan": scan,
             "orders": {"placed": placed, "cancelled": cancelled, "filled": [f["id"] for f in filled]},
             "learning": learning, "warnings": warns, "live": live,
@@ -1250,7 +1416,6 @@ def selftest():
     now = t0 + 300 * BAR + 5 * 60000
     rep = run({}, {c: b[:301] for c, b in coins.items()}, now)
     assert rep["bot"]["startBalance"] == 100
-    assert rep["learning"]["resolved"] > 0
     nfilled = 0
     for k in range(1, 24):
         now = t0 + (300 + 16 * k) * BAR + 5 * 60000
@@ -1278,7 +1443,6 @@ def selftest():
     st = json.load(open(f"{tmp}/state.json"))
     assert len(st["model"]["pending"]) == len(rep["model"]["pending"])
     assert len(st["history"]["BTC"]) == len(rep["history"]["BTC"])
-    assert rep["model"]["patterns"]["n"] > 0
     print(json.dumps({"ok": True, "orderFills": nfilled, "samples": rep["model"]["samples"], "trades": bot["closedN"],
                       "bySide": bot["bySide"], "open": len(bot["positions"]), "equity": bot["equity"],
                       "minProb": rep["model"]["params"]["minProb"],

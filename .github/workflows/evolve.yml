@@ -1,0 +1,34 @@
+name: Crypto Desk practice session
+
+# The bot practises its setups on the last 60 days of candles (46 to study, 14 as an unseen exam)
+# and updates playbook.json. The live trader picks up the new playbook on its next run.
+on:
+  schedule:
+    - cron: "41 */6 * * *"   # every 6 hours
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: evolve
+  cancel-in-progress: false
+
+jobs:
+  practise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Practice session
+        run: python evolve.py
+      - name: Save the playbook
+        run: |
+          git config user.name "crypto-desk-bot"
+          git config user.email "crypto-desk-bot@users.noreply.github.com"
+          git add playbook.json
+          git commit -m "Practice session: playbook update" || exit 0
+          for i in 1 2 3; do git pull --rebase && git push && break; sleep 5; done

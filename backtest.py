@@ -115,6 +115,7 @@ def main():
     ap.add_argument("--set", nargs="*", help="what-if settings, e.g. atrStop=2 rr=2 riskPct=0.01")
     ap.add_argument("--synthetic", action="store_true")
     ap.add_argument("--out", default=OUT)
+    ap.add_argument("--playbook", default=os.path.join(ROOT, "playbook.json"), help="playbook to trade (v8)")
     a = ap.parse_args()
     overrides = parse_set(a.set)
     t_start = time.time()
@@ -124,7 +125,10 @@ def main():
     times = sorted({r[0] for r in data["BTC"]})
     t0 = times[WARM]  # first bar of the test period
     t_end = times[-1] + E.BAR
-    state = {"overrides": overrides}
+    playbook = None
+    if a.playbook and os.path.exists(a.playbook):
+        with open(a.playbook) as f: playbook = json.load(f)
+    state = {"overrides": overrides, "playbook": playbook}
     fed_to = -1
     trades, curve, journal = [], [], []
     now = t0
@@ -138,7 +142,7 @@ def main():
         fed_to = close_t - E.BAR
         trades += rep["closed"]
         curve.append([close_t, rep["bot"]["equity"]])
-        state = {"bot": rep["bot"], "model": rep["model"], "history": rep["history"], "overrides": overrides}
+        state = {"bot": rep["bot"], "model": rep["model"], "history": rep["history"], "overrides": overrides, "playbook": playbook}
         if first:
             first = False
             if not a.synthetic:
@@ -166,6 +170,9 @@ def main():
            "curve": curve[:: max(1, len(curve) // 400)] + [curve[-1]],
            "trades": [{k: t.get(k) for k in ("id", "coin", "side", "entryTime", "exitTime", "entry", "exitPrice", "pnl", "R",
                                               "exitReason", "holdH", "leadLabel")} for t in trades[-200:]],
+           "playbookGenerated": (playbook or {}).get("generated"),
+           "note": ("The playbook was built from practice on recent data, so a backtest over the same period flatters it. "
+                    "The honest test is the exam week inside each practice session, and live paper trading."),
            "protections": [j for j in model.get("journal", []) if j["kind"] == "protect"][-30:],
            "seconds": round(time.time() - t_start, 1)}
     os.makedirs(os.path.dirname(a.out), exist_ok=True)

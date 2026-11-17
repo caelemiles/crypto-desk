@@ -13,6 +13,7 @@ STATE = os.path.join(ROOT, "state", "state.json")
 TRADES = os.path.join(ROOT, "state", "trades.json")
 RUNS = os.path.join(ROOT, "state", "runs.json")
 DASH = os.path.join(ROOT, "docs", "data.json")
+PLAYBOOK = os.path.join(ROOT, "playbook.json")  # written by the practice sessions (evolve.py)
 SOURCES = ["https://data-api.binance.vision/api/v3/klines", "https://api.binance.com/api/v3/klines"]
 FIRST_BARS = 960  # 10 days of history on the first run: the engine learns from all of it straight away
 
@@ -80,6 +81,7 @@ def main():
         print(json.dumps({"ok": False, "error": "no data fetched", "skipped": skipped}))
         raise SystemExit(1)
 
+    state["playbook"] = load(PLAYBOOK, None)
     rep = E.run(state, new, now)
     bot, model = rep["bot"], rep["model"]
     save(STATE, {"bot": bot, "model": model, "history": rep["history"]})
@@ -97,11 +99,14 @@ def main():
     runs = runs[-500:]
     save(RUNS, runs)
 
-    closed = sorted([t for t in trades.values() if t.get("status") == "closed"], key=lambda t: -t.get("exitTime", 0))
+    pre = bot.get("idPrefix", "T")
+    closed = sorted([t for t in trades.values() if t.get("status") == "closed" and str(t.get("id", "")).startswith(pre)],
+                    key=lambda t: -t.get("exitTime", 0))
     dash = {"updated": now, "bot": {k: bot.get(k) for k in (
                 "startBalance", "equity", "cash", "realized", "fees", "closedN", "wins", "losses", "grossWin",
                 "grossLoss", "maxDD", "peak", "daily", "today", "dailyTarget", "curve", "brake", "riskNote",
-                "readiness", "startedAt", "runs", "orders", "bySide", "byCoin", "byCS", "benched", "recent")},
+                "readiness", "startedAt", "runs", "orders", "bySide", "byCoin", "byCS", "benched", "recent", "setups", "engineVersion")},
+            "playbook": state["playbook"], "archive": model.get("archive", []),
             "positions": bot["positions"], "closed": closed[:150],
             "scan": [{k: it.get(k) for k in ("coin", "price", "chg24", "decision", "why", "best")} for it in rep["scan"]],
             "learning": {"samples": model.get("samples"), "minEvR": model["params"].get("minEvR"),
