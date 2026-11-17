@@ -101,14 +101,15 @@ def main():
     dash = {"updated": now, "bot": {k: bot.get(k) for k in (
                 "startBalance", "equity", "cash", "realized", "fees", "closedN", "wins", "losses", "grossWin",
                 "grossLoss", "maxDD", "peak", "daily", "today", "dailyTarget", "curve", "brake", "riskNote",
-                "readiness", "startedAt", "runs", "orders", "bySide", "byCoin")},
+                "readiness", "startedAt", "runs", "orders", "bySide", "byCoin", "byCS", "benched", "recent")},
             "positions": bot["positions"], "closed": closed[:150],
             "scan": [{k: it.get(k) for k in ("coin", "price", "chg24", "decision", "why", "best")} for it in rep["scan"]],
             "learning": {"samples": model.get("samples"), "minEvR": model["params"].get("minEvR"),
                          "calib": model.get("calib2"), "patterns": model.get("patterns"),
                          "settings": model.get("settings"), "lessons": model.get("lessons", [])[-15:]},
+            "journal": model.get("journal", [])[-150:],
             "runs": runs[-40:], "params": {k: model["params"].get(k) for k in (
-                "fixedStake", "atrStop", "rr", "timeStopH", "hardStopH", "maxOpen", "partialAtR", "runnerR")}}
+                "fixedStake", "riskPct", "minEvR", "lev", "minProb", "atrStop", "rr", "timeStopH", "hardStopH", "maxOpen", "partialAtR", "runnerR")}}
     save(DASH, dash)
     print(json.dumps({"ok": True, "equity": bot["equity"], "opened": len(rep["opened"]), "closed": len(rep["closed"]),
                       "open": len(bot["positions"]), "resolved": rep["learning"]["resolved"], "skipped": skipped}))

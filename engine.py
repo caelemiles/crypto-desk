@@ -432,9 +432,28 @@ def risk_now(bot, p):
     rec = bot.get("recent", [])[-20:]
     gw = sum(x for x in rec if x > 0); gl = -sum(x for x in rec if x < 0)
     pf = gw / gl if gl > 0 else (9 if gw > 0 else 0)
-    if len(rec) >= 20 and pf >= 1.5: return 0.045, f"record strong (PF {pf:.2f} over 20 trades): risk 4.5%"
-    if len(rec) >= 10 and pf < 0.8: return 0.02, f"record weak (PF {pf:.2f} over {len(rec)} trades): risk 2%"
-    return p["riskPct"], "risk 3%"
+    base = p["riskPct"]
+    if len(rec) >= 20 and pf >= 1.5: return base * 1.5, f"record strong (PF {pf:.2f} over 20 trades): risk {base*150:.0f}% of equity per trade"
+    if len(rec) >= 10 and pf < 0.8: return base * 0.5, f"record weak (PF {pf:.2f} over {len(rec)} trades): risk {base*50:.0f}% of equity per trade"
+    return base, f"risk {base*100:.0f}% of equity per trade"
+
+
+# ---------------------------------------------------------------- learning journal (v6)
+def jot(model, t, kind, text):
+    j = model.setdefault("journal", [])
+    j.append({"t": t, "kind": kind, "text": text})
+    model["journal"] = j[-300:]
+
+
+def cs_key(coin, side):
+    return f"{coin}:{side}"
+
+
+def is_blocked(bot, coin, side):
+    """A coin+side is benched once its own live record shows it loses: 6+ trades, under 40% wins, below -1.5R in total."""
+    r = bot.get("byCS", {}).get(cs_key(coin, side), [])[-12:]
+    if len(r) < 6: return False
+    return sum(1 for x in r if x > 0) / len(r) < 0.4 and sum(r) < -1.5
 
 
 def vec(v):
@@ -619,12 +638,29 @@ def close_position(bot, model, pos, price, t, reason, closed):
     bc = bot["byCoin"].setdefault(pos["coin"], {"n": 0, "wins": 0, "pnl": 0.0})
     bc["n"] += 1; bc["wins"] += pnl > 0; bc["pnl"] = round(bc["pnl"] + pnl, 2)
     hedge(model, pos["side"], pos.get("scores", {}), R, eta=0.03)
+    k = cs_key(pos["coin"], pos["side"])
+    cs = bot.setdefault("byCS", {})
+    cs[k] = (cs.get(k, []) + [round(R, 2)])[-12:]
     tr = dict(pos)
     tr.update({"status": "closed", "exitTime": t, "exitPrice": round(fill, 8), "exitReason": reason,
                "pnl": round(pnl, 2), "pnlPct": round(pnl / max(0.01, pos.get("notional0", pos["notional"])) * 100, 2), "R": round(R, 2),
                "fees": round(fee + pos["entryFee"], 2), "holdH": round((t - pos["entryTime"]) / H, 1),
                "last": round(fill, 8), "uPnl": 0})
     tr["review"] = auto_review(tr)
+    rec = bot["byCS"][k]; w = sum(1 for x in rec if x > 0)
+    lead = pos.get("lead"); sw = model["sides"][pos["side"]]["strat"].get(lead, {}).get("w") if lead else None
+    if pnl > 0:
+        why = ("hit the target" if reason == "Take profit" else "locked profit with the trailing stop" if reason == "Trailing stop"
+               else f"closed by {reason.lower()}")
+        lesson = f"Won {pnl:.2f} USDT ({R:+.2f}R) on {pos['coin']} {pos['side']}: {why} after {tr['holdH']}h."
+    else:
+        why = ("the move went straight against it" if reason == "Stop loss" and tr["holdH"] < 1
+               else "it never got going, so the time stop cut it" if reason.startswith("Time stop")
+               else "the signal flipped, so it got out early" if reason.startswith("AI exit") else f"{reason.lower()}")
+        lesson = f"Lost {abs(pnl):.2f} USDT ({R:+.2f}R) on {pos['coin']} {pos['side']}: {why}."
+    lesson += f" {pos['coin']} {pos['side']}s are now {w}/{len(rec)} wins."
+    if sw is not None: lesson += f" Trust in {pos.get('leadLabel', 'this setup')} is now {sw:.2f}."
+    jot(model, t, "trade", lesson)
     closed.append(tr)
 
 
@@ -787,6 +823,7 @@ def place_orders(bot, model, hist, live, now, scan, scan_x, risk_mult, brake):
         for side in (["long", "short"] if p["allowShort"] else ["long"]):
             sd = it["sides"][side]; sx = scan_x[(it["coin"], side)]
             if sd.get("evR", -1) < p.get("minEvR", 0.1) or sx["ens"] < p["minEdge"]: continue
+            if is_blocked(bot, it["coin"], side): continue
             if sx["v"].get("emaTrend", 0) < -0.2 and sd.get("evR", 0) < p.get("strongEvR", 0.3): continue
             cands.append((sd["evR"], it, side, sd, sx))
     cands.sort(key=lambda c: -c[0])
@@ -866,12 +903,33 @@ def run(state, new, now):
         model["quick10"] = True
         model.setdefault("lessons", []).append({"date": day_key(now), "text": "v5.1: fixed 10 USDT per trade, quick trades (1.5 ATR stop, 1.5R target, half banked at +1R, 4h time stop, 8h max, up to 6 open)."})
         model["lessons"] = model["lessons"][-60:]
-    model["engineVersion"] = 5
+    if not model.get("v6"):
+        # v6 (user, 17 Nov): bigger trades sized by risk and confidence instead of a fixed 10 USDT,
+        # stricter entries for accuracy, winners run further, learning journal
+        model["params"].update({"fixedStake": None, "riskPct": 0.02, "lev": 2.0, "maxNotionalPct": 1.0,
+                                "maxOpen": 4, "maxSameSide": 3, "minEvR": 0.20, "strongEvR": 0.35,
+                                "beAfterR": 1.0, "partialAtR": 1.0, "trailAfterR": 1.5, "runnerR": 3.0})
+        model["v6"] = True
+        txt = ("v6: trades are now sized by risk (2% of equity at risk, scaled by confidence and the recent record, up to 1x equity per trade) "
+               "instead of a fixed 10 USDT, so a typical win is worth about 1-3 USDT instead of a few cents. Entries need +0.20R measured edge "
+               "after fees (was +0.10R), coin+side pairs that keep losing are benched, max 4 trades open, and the trailing stop waits until +1.5R.")
+        model.setdefault("lessons", []).append({"date": day_key(now), "text": txt}); model["lessons"] = model["lessons"][-60:]
+        jot(model, now, "upgrade", txt)
+    model["engineVersion"] = 6
     bot = state.get("bot") or default_bot(now=now)
     hist = state.get("history") or {}
     hist, live, warns = merge_history(hist, new, now)
+    p0 = model["params"].get("minProb"); cfg0 = (model.get("settings") or {}).get("active")
     learning = learn(model, hist, now)
     p = model["params"]
+    if p0 is not None and p["minProb"] != p0:
+        jot(model, now, "tuning", f"Win-chance bar moved {p0:.0%} → {p['minProb']:.0%}: "
+            + ("recent ideas above the old bar were not paying after fees, so it got pickier." if p["minProb"] > p0
+               else "ideas just below the bar have been paying, so it lets a few more through."))
+    cfg1 = (learning.get("settings") or {}).get("active")
+    if cfg0 and cfg1 and cfg1 != cfg0:
+        jot(model, now, "tuning", f"Switched stop/target setting {cfg0} → {cfg1} (stop in ATRs x reward:risk): it measured better after fees on thousands of shadow ideas.")
+    daily_review(bot, model, now)
     build_calib(model)
 
     scan, scan_x = [], {}
@@ -931,6 +989,7 @@ def run(state, new, now):
         if sx["ens"] < p["minEdge"]: reasons.append(f"strategies clearly against it (ensemble {sx['ens']:+.2f})")
         if sx["v"].get("emaTrend", 0) < -0.2 and exp_R < p["strongEvR"]: reasons.append("against the 1h trend without a strong edge")
         if coin in just_closed: reasons.append("closed this run, cooling off")
+        if is_blocked(bot, coin, side): reasons.append(f"{coin} {side}s are benched: they keep losing in live trading")
         if risk_mult == 0: reasons.append(brake)
         if len(bot["positions"]) >= p["maxOpen"]: reasons.append(f"already {p['maxOpen']} open positions")
         elif sum(1 for q in bot["positions"] if q["side"] == side) >= p.get("maxSameSide", 3):
@@ -955,6 +1014,13 @@ def run(state, new, now):
         it["why"] = f"{sd['p']:.0%} calibrated win chance, measured edge {exp_R:+.2f}R, led by {sd['leadLabel']}"
 
     placed = place_orders(bot, model, hist, live, now, scan, scan_x, risk_mult, brake)
+    bench = sorted(k for k in bot.get("byCS", {}) if is_blocked(bot, *k.split(":")))
+    old = set(bot.get("benched", []))
+    for k in bench:
+        if k not in old: jot(model, now, "bench", f"Benched {k.replace(':', ' ')}s: they have lost too often in real trades, so it stops taking them until it re-learns.")
+    for k in old - set(bench):
+        jot(model, now, "bench", f"Un-benched {k.replace(':', ' ')}s: recent results recovered.")
+    bot["benched"] = bench
     eq = equity(bot, live)
     bot["equity"] = round(eq, 2)
     bot["peak"] = max(bot["peak"], eq)
@@ -962,7 +1028,7 @@ def run(state, new, now):
     bot["curve"] = (bot["curve"] + [[now, round(eq, 2), live.get("BTC")]])[-1000:]
     bot["lastRunAt"] = now; bot["runs"] += 1; bot["brake"] = brake
     bot["dailyTarget"] = p.get("dailyTarget", 100.0); bot["today"] = bot["daily"].get(day_key(now), 0.0)
-    bot["riskNote"] = risk_note; bot["engineVersion"] = 5
+    bot["riskNote"] = risk_note; bot["engineVersion"] = 6
     bot["readiness"] = readiness(bot, now)
     for g in bot.get("goals", []):
         if eq >= g and str(g) not in bot["goalHits"]:
@@ -982,6 +1048,29 @@ def run(state, new, now):
             "orders": {"placed": placed, "cancelled": cancelled, "filled": [f["id"] for f in filled]},
             "learning": learning, "warnings": warns, "live": live,
             "risk": {"drawdownPct": round(dd * 100, 2), "brake": brake}}
+
+
+def daily_review(bot, model, now):
+    """Once per SGT day: write yesterday's report card into the journal."""
+    today = day_key(now)
+    last = bot.get("reviewDay")
+    bot["reviewDay"] = today
+    if not last or last == today: return
+    pnl = bot.get("daily", {}).get(last, 0.0)
+    tgt = model["params"].get("dailyTarget", 100.0)
+    rec = bot.get("recent", [])[-20:]
+    wr = (sum(1 for x in rec if x > 0) / len(rec)) if rec else None
+    good = sorted(((k, sum(v)) for k, v in bot.get("byCS", {}).items() if len(v) >= 3), key=lambda t: -t[1])
+    parts = [f"Report card for {last}: {pnl:+.2f} USDT ({pnl / tgt * 100:.0f}% of the {tgt:.0f} USDT daily target)."]
+    if wr is not None: parts.append(f"Last {len(rec)} trades won {wr:.0%}.")
+    if good:
+        parts.append(f"Best pair so far: {good[0][0].replace(':', ' ')} ({good[0][1]:+.1f}R).")
+        if good[-1][1] < 0: parts.append(f"Worst: {good[-1][0].replace(':', ' ')} ({good[-1][1]:+.1f}R).")
+    for sd in SIDES:
+        st = model["sides"][sd]["strat"]
+        top = max(st, key=lambda k: st[k]["w"]); low = min(st, key=lambda k: st[k]["w"])
+        parts.append(f"{sd.title()}s: trusts {STRAT_LABEL[sd].get(top, top)} most ({st[top]['w']:.2f}), {STRAT_LABEL[sd].get(low, low)} least ({st[low]['w']:.2f}).")
+    jot(model, now, "daily", " ".join(parts))
 
 
 def top_drivers(model, side, coin, v):
