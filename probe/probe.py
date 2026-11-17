@@ -1,78 +1,66 @@
-import json, time, urllib.request, asyncio, datetime as dt
+import json, time, urllib.request, urllib.error, asyncio
 out = {}
-def get(name, url, data=None, n=3000):
+def get(url, data=None):
+    t=time.time()
     try:
-        req = urllib.request.Request(url, data=json.dumps(data).encode() if data else None,
-              headers={"User-Agent": "Mozilla/5.0 pm5-probe", "Content-Type": "application/json", "Accept": "application/json"})
+        req = urllib.request.Request(url, data=json.dumps(data).encode() if data else None, headers={"User-Agent": "pm5-paper-bot/1.0", "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=15) as r:
-            body = r.read().decode()
-            out[name] = {"status": r.status, "body": body[:n]}
-            return json.loads(body)
+            return r.status, json.loads(r.read().decode()), round(time.time()-t,2)
+    except urllib.error.HTTPError as e:
+        return e.code, (e.read() or b'')[:200].decode('utf8','ignore'), round(time.time()-t,2)
     except Exception as e:
-        out[name] = {"error": repr(e)[:300]}
-now = int(time.time()); cur = now // 300 * 300
-out["now"] = now; out["cur"] = cur
-iso = lambda t: dt.datetime.fromtimestamp(t, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-ev = get("gamma_event_cur", f"https://gamma-api.polymarket.com/events?slug=btc-updown-5m-{cur}", n=8000)
-mk = get("gamma_market_cur", f"https://gamma-api.polymarket.com/markets?slug=btc-updown-5m-{cur}", n=8000)
-get("gamma_market_next", f"https://gamma-api.polymarket.com/markets?slug=btc-updown-5m-{cur+300}", n=1500)
-for k in (1, 2, 4, 12):
-    get(f"gamma_market_prev{k}", f"https://gamma-api.polymarket.com/markets?slug=btc-updown-5m-{cur-300*k}", n=6000)
-    get(f"cryptoprice_prev{k}", f"https://polymarket.com/api/crypto/crypto-price?symbol=BTC&eventStartTime={iso(cur-300*k)}&variant=fiveminute&endDate={iso(cur-300*k+300)}")
-get("cryptoprice_cur", f"https://polymarket.com/api/crypto/crypto-price?symbol=BTC&eventStartTime={iso(cur)}&variant=fiveminute&endDate={iso(cur+300)}")
-try:
-    m = mk[0]; toks = json.loads(m["clobTokenIds"]); cid = m["conditionId"]
-    get("clob_book_up", f"https://clob.polymarket.com/book?token_id={toks[0]}", n=5000)
-    get("clob_books", "https://clob.polymarket.com/books", data=[{"token_id": toks[0]}, {"token_id": toks[1]}], n=2000)
-    get("clob_fee", f"https://clob.polymarket.com/fee-rate?token_id={toks[0]}")
-    get("clob_market", f"https://clob.polymarket.com/markets/{cid}", n=3000)
-    get("clob_tick", f"https://clob.polymarket.com/tick-size?token_id={toks[0]}")
-    get("clob_hist", f"https://clob.polymarket.com/prices-history?market={toks[0]}&interval=1h&fidelity=1", n=1500)
-    get("data_trades", f"https://data-api.polymarket.com/trades?market={cid}&limit=5", n=2500)
-    get("clob_lasttrade", f"https://clob.polymarket.com/last-trade-price?token_id={toks[0]}")
-except Exception as e:
-    out["tok_err"] = repr(e)
-get("series", "https://gamma-api.polymarket.com/series?slug=btc-up-or-down-5m", n=1500)
-get("bn_vision_1m", "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2")
-get("bn_vision_depth", "https://data-api.binance.vision/api/v3/depth?symbol=BTCUSDT&limit=5", n=600)
-get("bn_vision_trades", "https://data-api.binance.vision/api/v3/aggTrades?symbol=BTCUSDT&limit=2")
-get("bn_fapi", "https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT")
-get("okx_funding", "https://www.okx.com/api/v5/public/funding-rate?instId=BTC-USDT-SWAP")
-get("okx_oi", "https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=BTC-USDT-SWAP")
-get("okx_liq", "https://www.okx.com/api/v5/public/liquidation-orders?instType=SWAP&uly=BTC-USDT&state=filled&limit=2", n=1500)
-get("okx_taker", "https://www.okx.com/api/v5/rubik/stat/taker-volume?ccy=BTC&instType=CONTRACTS&period=5m", n=600)
-get("bybit", "https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT", n=1500)
-get("hyperliquid", "https://api.hyperliquid.xyz/info", data={"type": "metaAndAssetCtxs"}, n=1500)
-get("coinbase", "https://api.exchange.coinbase.com/products/BTC-USD/ticker")
-get("coinbase_candles", "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60", n=400)
-get("kraken", "https://api.kraken.com/0/public/Ticker?pair=XBTUSD", n=600)
-get("deribit", "https://www.deribit.com/api/v2/public/get_index_price?index_name=btc_usd")
+        return 0, repr(e)[:200], round(time.time()-t,2)
+now = int(time.time()); cur = now//300*300
+# b) gamma multi-slug
+slugs = [f"btc-updown-5m-{cur-300*k}" for k in range(2, 52)]
+st, body, dt = get("https://gamma-api.polymarket.com/markets?closed=true&limit=100&" + "&".join("slug="+s for s in slugs))
+out["gamma_multi"] = {"status": st, "n": len(body) if isinstance(body, list) else body, "dt": dt,
+    "sample": [(m["slug"], m.get("outcomePrices"), m.get("closed"), m.get("umaResolutionStatus")) for m in body[:5]] if isinstance(body, list) else None}
+# older one: 4 days ago
+old = cur - 4*86400
+st, body, dt = get(f"https://gamma-api.polymarket.com/markets?closed=true&slug=btc-updown-5m-{old}")
+out["gamma_old"] = {"status": st, "body": str(body)[:300]}
+# c) binance 1s klines 4 days ago
+st, body, dt = get(f"https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1s&startTime={(old)*1000}&limit=3")
+out["bn_1s_old"] = {"status": st, "body": str(body)[:300], "dt": dt}
+# d) crypto-price rate test
+from datetime import datetime, timezone
+iso = lambda t: datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+codes = []
+t0=time.time()
+for k in range(2, 42):
+    s = cur - 300*k
+    st, body, dt = get(f"https://polymarket.com/api/crypto/crypto-price?symbol=BTC&eventStartTime={iso(s)}&variant=fiveminute&endDate={iso(s+300)}")
+    codes.append((st, dt))
+out["cp_rate"] = {"codes": codes, "total_s": round(time.time()-t0,1)}
 
-async def ws(name, url, subs, secs=8, ping=None):
+async def ws(name, mode, secs=100):
     import websockets
-    msgs = []
+    sub = {"action": "subscribe", "subscriptions": [{"topic": "crypto_prices_chainlink", "type": "*", "filters": json.dumps({"symbol": "btc/usd"})}]}
+    times, other = [], []
+    kw = {"ping_interval": None} if mode == "noping_lib" else {}
     try:
-        async with websockets.connect(url, open_timeout=10, max_size=2**22) as w:
-            for s in subs: await w.send(json.dumps(s) if not isinstance(s, str) else s)
-            end = time.time() + secs
-            while time.time() < end:
+        async with websockets.connect("wss://ws-live-data.polymarket.com", open_timeout=10, **kw) as w:
+            await w.send(json.dumps(sub))
+            start = time.time(); last_ping = start
+            while time.time() - start < secs:
+                if mode in ("PING", "ping") and time.time() - last_ping > 5:
+                    await w.send(mode); last_ping = time.time()
                 try:
-                    m = await asyncio.wait_for(w.recv(), timeout=2)
-                    msgs.append(m[:700] if isinstance(m, str) else repr(m[:200]))
+                    m = await asyncio.wait_for(w.recv(), timeout=1)
+                    if isinstance(m, str) and m.startswith("{") and '"value"' in m:
+                        times.append(round(time.time()-start,1))
+                    else:
+                        other.append((round(time.time()-start,1), str(m)[:40]))
                 except asyncio.TimeoutError:
-                    if ping: await w.send(ping)
-        out[name] = {"n": len(msgs), "msgs": msgs[:8]}
+                    pass
+        closed = None
     except Exception as e:
-        out[name] = {"error": repr(e)[:300], "msgs": msgs[:4]}
-
-async def allws():
-    await ws("rtds_chainlink", "wss://ws-live-data.polymarket.com", [{"action": "subscribe", "subscriptions": [{"topic": "crypto_prices_chainlink", "type": "*", "filters": "{\"symbol\":\"btc/usd\"}"}]}], ping="PING")
-    await ws("rtds_binance", "wss://ws-live-data.polymarket.com", [{"action": "subscribe", "subscriptions": [{"topic": "crypto_prices", "type": "update", "filters": "btcusdt"}]}], ping="PING")
-    await ws("v2_noauth", "wss://ws-live-v2.polymarket.com/ws", [{"op": "subscribe", "rid": "s1", "subscriptions": [{"channel": "price.crypto", "filter": {"symbol": "btcusd"}}]}])
-    try:
-        toks = json.loads(mk[0]["clobTokenIds"])
-        await ws("clob_ws", "wss://ws-subscriptions-clob.polymarket.com/ws/market", [{"assets_ids": toks, "type": "market"}], ping="PING")
-    except Exception as e:
-        out["clob_ws"] = repr(e)
-asyncio.run(allws())
-json.dump(out, open("probe_out.json", "w"), indent=1)
+        closed = repr(e)[:200]
+    gaps = [round(b-a,1) for a,b in zip(times, times[1:])]
+    out[name] = {"n": len(times), "first": times[:3], "last": times[-3:], "max_gap": max(gaps) if gaps else None,
+                 "big_gaps": [(times[i], g) for i,g in enumerate(gaps) if g > 3][:10], "other": other[:10], "closed": closed}
+async def main():
+    await asyncio.gather(ws("ws_PING", "PING"), ws("ws_ping", "ping"), ws("ws_none", "none"), ws("ws_noping_lib", "noping_lib"))
+asyncio.run(main())
+json.dump(out, open("probe_out.json","w"), indent=1)
