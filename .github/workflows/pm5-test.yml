@@ -1,0 +1,56 @@
+name: PM5 smoke test
+
+# Runs the Polymarket BTC 5-minute paper-trading AI around the clock.
+# Each job runs ~5h40m (GitHub's limit is 6h), saves its memory, and exits. A new job is queued every hour;
+# because of the concurrency group only one runs at a time and the next one takes over as soon as the last ends.
+# PAPER TRADING ONLY: no keys, no wallet, no orders.
+
+on:
+  push:
+    branches: [pm5]
+
+permissions:
+  contents: write   # to publish dashboard data + memory to the pm5-data branch
+
+concurrency:
+  group: pm5
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PM5_WORK: ${{ github.workspace }}/pm5work
+      PM5_PUBLISH: ${{ github.workspace }}/pm5publish
+      PM5_TOKEN: ${{ github.token }}
+      PM5_MINUTES: "16"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install --quiet "numpy>=2,<3" "websockets==13.1" "lightgbm>=4,<5"
+
+      # Historical market data (SQLite) lives in the Actions cache. The learning memory itself is in the
+      # pm5-data branch, so losing the cache only loses raw history, never the models or the journal.
+      - name: Restore history database
+        uses: actions/cache/restore@v4
+        with:
+          path: pm5work/history.sqlite
+          key: pm5-db-${{ github.run_id }}
+          restore-keys: pm5-db-
+
+      - name: Run the AI
+        run: python pm5/run.py
+
+      - name: Save history database
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: pm5work/history.sqlite
+          key: pm5-db-${{ github.run_id }}
+

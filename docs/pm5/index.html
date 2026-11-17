@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BTC 5-Min AI · Polymarket paper trader</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+:root{--bg:#EDF0F3;--card:#fff;--line:#D8DEE6;--ink:#101B2D;--muted:#5A6779;--acc:#0F6B66;--acc2:#3557C4;--win:#11803F;--loss:#BF2F2F;--winbg:#DDF3E5;--lossbg:#F9E1E0;--hyp:#8A5A00;--hypbg:#FCEFD3;--soft:#F5F7F9}
+@media (prefers-color-scheme:dark){:root{--bg:#0B1017;--card:#131A24;--line:#263140;--ink:#E8EDF3;--muted:#93A1B3;--acc:#3CC4B7;--acc2:#7C9BFF;--win:#4ADE80;--loss:#F87171;--winbg:#12301F;--lossbg:#381616;--hyp:#F5C04E;--hypbg:#33280F;--soft:#0F151E}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.top{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.wrap{max-width:1180px;margin:0 auto;padding:12px 16px}
+.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:20px;letter-spacing:.03em;text-transform:uppercase}h2{margin:0 0 10px;font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+h3{margin:0 0 6px;font-size:15px}
+.sub{color:var(--muted);font-size:12.5px}.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle}
+.b-paper{background:var(--hypbg);color:var(--hyp)}.b-ok{background:var(--winbg);color:var(--win)}.b-bad{background:var(--lossbg);color:var(--loss)}
+.b-meas{background:var(--winbg);color:var(--win)}.b-hyp{background:var(--hypbg);color:var(--hyp)}.b-ev{background:var(--soft);color:var(--muted);border:1px solid var(--line)}
+.tabs{display:flex;gap:2px;overflow-x:auto;margin-top:10px;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
+.tab{border:0;background:none;color:var(--muted);padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--ink);border-color:var(--acc)}
+.big{font-size:26px;font-weight:650}.pos{color:var(--win)}.neg{color:var(--loss)}
+.grid{display:grid;gap:14px}.g2{grid-template-columns:1.4fr 1fr}.g2e{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:860px){.g2,.g2e,.g3{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .k{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}.kpi .v{font-size:19px;font-weight:650;margin-top:2px}.kpi .s{font-size:11.5px;color:var(--muted)}
+table{border-collapse:collapse;width:100%}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;font-size:13px}
+th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+th:first-child,td:first-child{text-align:left}td.l,th.l{text-align:left;white-space:normal}.scroll{overflow-x:auto}
+.tag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600;margin:1px 2px 1px 0;background:var(--soft);border:1px solid var(--line);color:var(--muted)}
+.tag.w{background:var(--winbg);color:var(--win);border-color:transparent}.tag.l{background:var(--lossbg);color:var(--loss);border-color:transparent}
+.note{font-size:12px;color:var(--muted)}ul{margin:0;padding-left:18px}li{margin:3px 0}
+.feed{max-height:560px;overflow:auto}.fr{display:grid;grid-template-columns:62px 1fr;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.fr .t{color:var(--muted);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.k-trade{color:var(--acc);font-weight:600}.k-model{color:var(--acc2);font-weight:600}.k-risk{color:var(--loss);font-weight:600}.k-experiment{color:var(--hyp)}
+.bar{height:9px;border-radius:99px;background:var(--line);overflow:hidden;position:relative}.bar>i{display:block;height:100%;background:var(--acc)}
+.pb{display:grid;grid-template-columns:150px 1fr 52px;gap:8px;align-items:center;margin:6px 0;font-size:13px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.chip{border:1px solid var(--line);background:none;color:var(--ink);border-radius:99px;padding:3px 10px;font-size:12px;cursor:pointer}.chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.entry{border:1px solid var(--line);border-radius:9px;padding:11px 12px;margin-bottom:10px;background:var(--card)}
+.entry .meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:5px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}.kv div:nth-child(odd){color:var(--muted)}
+.count{font-size:34px;font-weight:700}
+.empty{color:var(--muted);font-style:italic;padding:8px 0}
+.chart{height:300px}
+.hide{display:none}
+.warn{padding:9px 12px;border-radius:8px;background:var(--hypbg);color:var(--hyp);font-size:13px}
+.side-up{color:var(--win);font-weight:700}.side-down{color:var(--loss);font-weight:700}
+svg text{fill:var(--muted);font-size:10px}
+.card svg{max-width:440px;margin:0 auto}td.l{min-width:220px}
+</style></head><body>
+<div class="top"><div class="wrap">
+  <div class="head">
+    <div><h1>BTC 5-Minute AI <span class="badge b-paper">Paper trading</span></h1>
+      <div class="sub" id="sub">Loading…</div></div>
+    <div style="text-align:right"><div class="sub">Equity (paper USDC)</div><div class="big mono" id="eq">–</div></div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+</div></div>
+<div class="wrap" id="main"><div class="empty">Loading the latest data…</div></div>
+<script>
+const OWNER = location.hostname.endsWith('github.io') ? location.hostname.split('.')[0] : 'caelemiles';
+const REPO = (location.hostname.endsWith('github.io') && location.pathname.split('/')[1]) || 'crypto-desk';
+const BR = 'pm5-data';
+const PAGES = ['Overview','Live AI','Market Data','Paper Trading','Learning Journal','Strategy Lab','Model Performance','Model History','Settings'];
+let page = (location.hash||'').slice(1).replace(/-/g,' ') || 'Overview'; if(!PAGES.includes(page)) page='Overview';
+let L = null, D = null, sha = null, jfilter = 'all', charts = [];
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num = (v, d=2) => v==null || isNaN(v) ? '–' : Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const usd = (v, d=2) => v==null ? '–' : (v<0?'-$':'$') + num(Math.abs(v), d);
+const sgn = (v, d=2) => v==null ? '–' : (v>=0?'+':'-') + '$' + num(Math.abs(v), d);
+const pct = (v, d=1) => v==null ? '–' : (v*100).toFixed(d) + '%';
+const cls = v => v==null ? '' : v>0 ? 'pos' : v<0 ? 'neg' : '';
+const tsg = (ts, withDate) => { if(!ts) return '–'; const d = new Date(ts*1000); const o = {timeZone:'Asia/Singapore',hour:'2-digit',minute:'2-digit',hour12:false}; if(withDate){o.day='2-digit';o.month='short'} return d.toLocaleString('en-GB', o); };
+const ago = ts => { if(!ts) return '–'; const s = Date.now()/1000 - ts; if(s<90) return Math.round(s)+'s ago'; if(s<5400) return Math.round(s/60)+' min ago'; return (s/3600).toFixed(1)+' h ago'; };
+const ev = e => e==='measured' ? '<span class="badge b-meas">measured</span>' : e==='hypothesis' ? '<span class="badge b-hyp">hypothesis</span>' : '<span class="badge b-ev">event</span>';
+const side = s => s ? `<span class="side-${String(s).toLowerCase()}">${esc(String(s).toUpperCase())}</span>` : '–';
+const kpi = (k, v, s, c) => `<div class="kpi"><div class="k">${k}</div><div class="v mono ${c||''}">${v}</div>${s?`<div class="s">${s}</div>`:''}</div>`;
+const table = (heads, rows, empty) => rows.length ? `<div class="scroll"><table><tr>${heads.map(h=>`<th class="${h.startsWith('_')?'l':''}">${h.replace(/^_/,'')}</th>`).join('')}</tr>${rows.join('')}</table></div>` : `<div class="empty">${empty||'Nothing yet.'}</div>`;
+
+async function getJSON(url){ const r = await fetch(url, {cache:'no-store'}); if(!r.ok) throw new Error(r.status); return r.json(); }
+async function latestSha(){
+  try { const b = await getJSON(`https://api.github.com/repos/${OWNER}/${REPO}/branches/${BR}`); return b.commit.sha; } catch(e){ return null; }
+}
+const SRC = new URLSearchParams(location.search).get('src');  // optional override, used for local testing
+async function load(full){
+  const s = SRC ? 'local' : await latestSha();
+  const base = SRC ? SRC : s ? `https://raw.githubusercontent.com/${OWNER}/${REPO}/${s}/` : `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BR}/`;
+  try { L = await getJSON(base + 'live.json?t=' + Date.now()); } catch(e){ if(!L){ $('#main').innerHTML = '<div class="card">No data yet. The bot publishes its first results a few minutes after it starts.</div>'; return; } }
+  if(full || !D || s !== sha){ try { const d = await getJSON(base + 'data.json?t=' + Date.now()); if(!D || d.generated !== D.generated) D = d; } catch(e){} }
+  sha = s; render();
+}
+function header(){
+  const o = L.overview, h = L.health||{}, now = Date.now()/1000;
+  const age = now - L.generated;
+  const healthy = age < 400 && (h.chainlink?.age_s ?? 999) < 30;
+  $('#eq').innerHTML = `<span class="${cls(o.net_pnl)}">${usd(o.equity)}</span>`;
+  $('#sub').innerHTML = `<span class="badge ${healthy?'b-ok':'b-bad'}">${healthy?'running':'check status'}</span> updated ${ago(L.generated)} · champion ${esc(o.champion||'–')} · net ${sgn(o.net_pnl)} (${pct(o.roi)}) · all times SGT`;
+  $('#tabs').innerHTML = PAGES.map(p=>`<button class="tab ${p===page?'on':''}" data-p="${p}">${p}</button>`).join('');
+  document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{page=b.dataset.p; location.hash=page.replace(/ /g,'-'); render(); window.scrollTo(0,0);});
+}
+function render(){
+  if(!L) return; header(); charts.forEach(c=>{try{c.remove()}catch(e){}}); charts=[];
+  const f = {'Overview':pOverview,'Live AI':pLive,'Market Data':pMarket,'Paper Trading':pTrading,'Learning Journal':pJournal,'Strategy Lab':pLab,'Model Performance':pPerf,'Model History':pHistory,'Settings':pSettings}[page];
+  $('#main').innerHTML = f(); afterRender();
+}
+let after = []; function afterRender(){ const a = after; after=[]; a.forEach(fn=>{try{fn()}catch(e){console.error(e)}}); }
+
+function feedHTML(items, n){
+  const rows = (items||[]).slice(-n).reverse();
+  return rows.length ? rows.map(a=>`<div class="fr"><div class="t">${esc(a.time||tsg(a.ts))}</div><div class="k-${esc(a.kind)}">${esc(a.text)}</div></div>`).join('') : '<div class="empty">No activity yet.</div>';
+}
+function marketCard(){
+  const lv = L.live||{}, m = lv.market||{}, c = lv.champion||{};
+  if(!m.slug) return '<div class="empty">Waiting for the next market…</div>';
+  const left = Math.max(0, (m.end||0) - Date.now()/1000);
+  const up = m.book?.up||{};
+  const mkt = up.mid;
+  const dec = c.decision ? `Traded: bought ${side(c.decision.side)} at ${c.decision.t}s (model ${pct(c.decision.p_side,0)})` :
+              c.missed ? `Wanted to trade but: ${esc(c.missed.reason)}` :
+              c.best_reject ? `No trade yet - best idea: ${side(c.best_reject.side)} edge ${num(c.best_reject.edge,3)} (${esc(c.best_reject.reason)})` :
+              (m.problems && m.problems.length ? 'Not trading: ' + esc(m.problems.join('; ')) : 'Watching - no edge yet');
+  return `<h3>${esc(m.title||m.slug)}</h3>
+  <div class="sub">${m.t}s in · ${Math.round(left)}s left at last update · <a href="https://polymarket.com/event/${esc(m.slug)}" target="_blank" rel="noopener">open on Polymarket</a></div>
+  <div class="pb" style="margin-top:10px"><span>AI P(UP)</span><div class="bar"><i style="width:${(c.p_up??0)*100}%"></i></div><b class="mono">${pct(c.p_up,0)}</b></div>
+  <div class="pb"><span>Market price UP</span><div class="bar"><i style="width:${(mkt??0)*100}%;background:var(--acc2)"></i></div><b class="mono">${pct(mkt,0)}</b></div>
+  <div class="note" style="margin-top:6px">${dec}</div>`;
+}
+function pOverview(){
+  const o = L.overview;
+  const k = [kpi('Equity', usd(o.equity), `start ${usd(o.start_balance,0)}`, cls(o.net_pnl)), kpi('Net P&L', sgn(o.net_pnl), pct(o.roi)+' ROI', cls(o.net_pnl)),
+    kpi('Today', sgn(o.daily_pnl), '', cls(o.daily_pnl)), kpi('7 days', sgn(o.weekly_pnl), '', cls(o.weekly_pnl)), kpi('30 days', sgn(o.monthly_pnl), '', cls(o.monthly_pnl)),
+    kpi('Trades', o.trades, `${o.open_positions} open`), kpi('Win rate', pct(o.win_rate), 'profitable trades'), kpi('Avg win / loss', `${usd(o.avg_win)} / ${usd(o.avg_loss)}`),
+    kpi('Max drawdown', pct(o.max_drawdown), 'from peak'), kpi('Brier score', num(o.brier,4), `${o.brier_n} markets · lower is better`), kpi('Fees paid', usd(o.fees))].join('');
+  const dr = D?.journal?.daily?.slice(-1)[0];
+  after.push(()=>equityChart('#eqc'));
+  return `<div class="grid" style="margin-top:14px">
+   ${o.paused_until?`<div class="warn">New entries paused until ${tsg(o.paused_until)} (risk limit).</div>`:''}
+   <div class="kpis">${k}</div>
+   <div class="grid g2">
+     <div class="grid">
+       <div class="card"><h2>Active market</h2>${marketCard()}</div>
+       <div class="card"><h2>Equity curve</h2><div id="eqc" class="chart" style="height:240px"></div></div>
+       <div class="card"><h2>Latest daily learning report</h2>${dr?dailyHTML(dr,true):'<div class="empty">The first report is written after midnight (SGT).</div>'}</div>
+     </div>
+     <div class="card"><h2>AI activity · live</h2><div class="feed">${feedHTML(L.activity, 60)}</div></div>
+   </div></div>`;
+}
+function equityChart(sel){
+  const el = $(sel); if(!el || !window.LightweightCharts || !D?.equity_curve?.length){ if(el) el.innerHTML='<div class="empty">The equity curve appears after the first few hours.</div>'; return; }
+  const ch = mkChart(el); const s = ch.addAreaSeries({lineColor:css('--acc'), topColor:css('--acc')+'55', bottomColor:css('--acc')+'05', lineWidth:2});
+  s.setData(D.equity_curve.map(([t,v])=>({time:t+8*3600,value:v}))); ch.timeScale().fitContent();
+}
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function mkChart(el){ const ch = LightweightCharts.createChart(el,{autoSize:true,layout:{background:{color:'transparent'},textColor:css('--muted')},grid:{vertLines:{color:css('--line')},horzLines:{color:css('--line')}},rightPriceScale:{borderColor:css('--line')},timeScale:{borderColor:css('--line'),timeVisible:true,secondsVisible:false}}); charts.push(ch); return ch; }
+
+function pLive(){
+  const lv = L.live||{}, m = lv.market||{}, c = lv.champion||{}, f = lv.features||{};
+  const models = (lv.models||[]).slice().sort((a,b)=>a.kind==='market'?-1:b.kind==='market'?1:0);
+  const bars = models.map(x=>`<div class="pb"><span title="${esc(x.desc)}">${esc(x.id)} ${x.id===c.model?'★':''} <span class="note">${esc(x.kind)}</span></span><div class="bar"><i style="width:${x.p_up*100}%;${x.kind==='market'?'background:var(--acc2)':''}"></i></div><b class="mono">${pct(x.p_up,1)}</b></div>`).join('');
+  const depth = s => { const b = m.book?.[s]; if(!b) return '<div class="empty">No book</div>'; const n = Math.max(b.depth_bid.length, b.depth_ask.length); let r=[]; for(let i=0;i<Math.min(n,6);i++){ const bi=b.depth_bid[i], a=b.depth_ask[i]; r.push(`<tr><td>${bi?num(bi[1],0):''}</td><td class="pos">${bi?bi[0].toFixed(2):''}</td><td class="neg">${a?a[0].toFixed(2):''}</td><td>${a?num(a[1],0):''}</td></tr>`);} return table(['Bid size','Bid','Ask','Ask size'], r); };
+  const h = L.health||{};
+  const hr = Object.entries(h).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v.age_s==null?'never':v.age_s+'s'}</td><td>${v.errors}</td><td class="l note">${esc(v.last_error||'')}</td></tr>`);
+  const feats = Object.entries(f).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="mono">${v==null?'–':typeof v==='number'?(Math.abs(v)<0.01&&v!==0?v.toExponential(2):num(v,4)):esc(v)}</td></tr>`);
+  return `<div class="grid" style="margin-top:14px">
+  <div class="grid g2">
+    <div class="card"><h2>Current analysis</h2>${marketCard()}
+      <div class="kv" style="margin-top:12px">
+        <div>Price to beat (Chainlink TWAP at open)</div><div class="mono">${m.open_ref?'$'+num(m.open_ref,2):'not published yet'}</div>
+        <div>Chainlink BTC/USD now</div><div class="mono">${m.cl_price?'$'+num(m.cl_price,2):'–'}</div>
+        <div>Distance to price to beat</div><div class="mono ${cls(m.d_bp)}">${m.d_bp==null?'–':num(m.d_bp,2)+' bp'}</div>
+        <div>Settlement TWAP already observed</div><div class="mono">${pct(m.twap_frac,0)}</div>
+        <div>Fair-value z-score</div><div class="mono">${num(m.z,2)}</div>
+        <div>Volatility ratio (1 min vs 15 min)</div><div class="mono">${num(m.vol_ratio,2)}</div>
+        <div>Taker fee rate</div><div class="mono">${m.fee_rate??'–'}</div>
+        <div>Liquidity / volume</div><div class="mono">${usd(m.liquidity,0)} / ${usd(m.volume,0)}</div>
+      </div>
+      ${m.not_tradable?`<div class="note" style="margin-top:8px">Not tradable now: ${esc(m.not_tradable)}</div>`:''}
+    </div>
+    <div class="card"><h2>Every model's probability of UP</h2>${bars||'<div class="empty">No predictions yet this market.</div>'}
+      <div class="note">★ = model used by the champion. Blue = the market's own price, the benchmark to beat.</div>
+      <h2 style="margin-top:14px">Champion decision</h2>
+      <div class="kv"><div>Strategy</div><div>${esc(c.id)}</div>
+      <div>Decision</div><div>${c.decision?`bought ${side(c.decision.side)} at ${c.decision.t}s`:'no trade (yet)'}</div>
+      <div>Best rejected idea</div><div>${c.best_reject?`${side(c.best_reject.side)} @ ${c.best_reject.ask} · edge ${num(c.best_reject.edge,3)} · ${esc(c.best_reject.reason)}`:'–'}</div>
+      <div>Blocked trade</div><div>${c.missed?esc(c.missed.reason):'–'}</div></div>
+    </div>
+  </div>
+  <div class="grid g2e"><div class="card"><h2>Order book · UP</h2>${depth('up')}</div><div class="card"><h2>Order book · DOWN</h2>${depth('down')}</div></div>
+  <div class="grid g2e"><div class="card"><h2>Indicators the models see</h2>${table(['Feature','Value'], feats)}</div>
+  <div class="card"><h2>Data feeds</h2>${table(['Feed','Last OK','Errors','_Last error'], hr)}
+    <div class="note" style="margin-top:8px">Run ${esc(L.run?.id)} · started ${tsg(L.run?.started,1)} · hands over at ${tsg(L.run?.ends,1)} · ${L.run?.loops} loops · ${L.run?.errors} errors · Chainlink reconnects ${L.run?.chainlink_reconnects}</div></div></div>
+  </div>`;
+}
+function pMarket(){
+  if(!D) return '<div class="empty">Loading…</div>';
+  const md = D.market_data||{};
+  after.push(()=>{ const el=$('#btc'); if(!el||!md.btc_1m?.length) return; const ch=mkChart(el); const s=ch.addCandlestickSeries({upColor:css('--win'),downColor:css('--loss'),borderVisible:false,wickUpColor:css('--win'),wickDownColor:css('--loss')}); s.setData(md.btc_1m.map(c=>({time:c[0]+8*3600,open:c[1],high:c[2],low:c[3],close:c[4]}))); ch.timeScale().fitContent(); });
+  after.push(()=>{ const el=$('#clc'); if(!el||!md.chainlink?.length) return; const ch=mkChart(el); const s=ch.addLineSeries({color:css('--acc'),lineWidth:2}); s.setData(md.chainlink.map(([t,p])=>({time:t+8*3600,value:p}))); ch.timeScale().fitContent(); });
+  after.push(()=>{ const el=$('#pmc'); if(!el||!md.pm_mid?.length) return; const ch=mkChart(el); const s=ch.addLineSeries({color:css('--acc2'),lineWidth:2}); const seen=new Set(); s.setData(md.pm_mid.filter(([t])=>!seen.has(t)&&seen.add(t)).map(([t,sl,m])=>({time:t+8*3600,value:m}))); ch.timeScale().fitContent(); });
+  const outs = (md.outcomes||[]).map(o=>`<tr><td>${tsg(o.start)}–${tsg(o.start+300)}</td><td class="mono">${num(o.open,2)}</td><td class="mono">${num(o.close,2)}</td><td class="mono ${cls(o.close-o.open)}">${num(o.close-o.open,2)}</td><td>${side(o.outcome)}</td></tr>`);
+  const e = md.ext||{};
+  return `<div class="grid" style="margin-top:14px">
+   <div class="card"><h2>BTC/USDT · Binance · 1-minute candles (6h)</h2><div id="btc" class="chart"></div></div>
+   <div class="grid g2e"><div class="card"><h2>Chainlink BTC/USD · settlement reference family (30 min)</h2><div id="clc" class="chart" style="height:240px"></div></div>
+   <div class="card"><h2>Polymarket UP price · recent markets (30 min)</h2><div id="pmc" class="chart" style="height:240px"></div></div></div>
+   <div class="grid g2"><div class="card"><h2>Recent results</h2>${table(['Window','Open (TWAP)','Close (TWAP)','Change','Result'], outs, 'No resolved markets yet.')}</div>
+   <div class="card"><h2>Derivatives (OKX BTC-USDT perpetual)</h2><div class="kv">
+     <div>Funding rate</div><div class="mono">${e.funding==null?'–':(e.funding*100).toFixed(4)+'%'}</div>
+     <div>Premium</div><div class="mono">${e.premium==null?'–':(e.premium*100).toFixed(3)+'%'}</div>
+     <div>Open interest</div><div class="mono">${usd(e.oi_usd,0)}</div>
+     <div>Long liquidations (5 min)</div><div class="mono">${usd(e.liq_long_5m,0)}</div>
+     <div>Short liquidations (5 min)</div><div class="mono">${usd(e.liq_short_5m,0)}</div></div>
+     <p class="note">Markets settle on Chainlink's 60-second TWAP, not on Binance. Binance and OKX are used as independent signals only.</p></div></div>
+  </div>`;
+}
+function tradeRow(t){
+  return `<tr><td>${tsg(t.opened,1)}</td><td>${esc(t.id)}</td><td class="l">${esc((t.title||t.slug||'').replace('Bitcoin Up or Down - ',''))}</td><td>${side(t.side)}</td><td class="mono">${num(t.shares,2)}</td><td class="mono">${num(t.entry_avg,3)}</td><td class="mono">${usd(t.cost)}</td><td class="mono">${usd(t.fee,3)}</td><td class="mono">${pct(t.prob,0)}</td><td>${t.status==='open'?'<span class="tag">open</span>':t.pnl>0?'<span class="tag w">won</span>':'<span class="tag l">lost</span>'}</td><td class="mono ${cls(t.pnl)}">${t.pnl==null?'–':sgn(t.pnl)}</td><td class="note">${esc(t.exit_reason||'')}${t.partial?' · partial fill':''}</td></tr>`;
+}
+function pTrading(){
+  const H = ['Opened','ID','_Market','Side','Shares','Avg price','Cost','Fee','Model','Status','P&L','Exit'];
+  const open = (L.open||[]).map(tradeRow);
+  const closed = (D?.trades?.closed||L.recent_trades||[]).slice().reverse().map(tradeRow);
+  const orders = (D?.trades?.orders||[]).slice(-60).reverse().map(o=>`<tr><td>${tsg(o.ts,1)}</td><td>${side(o.side)}</td><td class="mono">${o.limit}</td><td class="mono">${usd(o.budget)}</td><td class="mono">${num(o.filled_shares,2)}</td><td class="mono">${o.avg?num(o.avg,3):'–'}</td><td class="mono">${usd(o.fee,3)}</td><td class="l">${esc(o.status)}</td><td class="l note">${(o.fills||[]).map(f=>f[1]+'@'+f[0]).join(', ')}</td></tr>`);
+  const rej = (D?.trades?.rejected||[]).slice(-60).reverse().map(r=>`<tr><td>${tsg(r.ts,1)}</td><td>${side(r.side)}</td><td class="mono">${pct(r.prob,0)}</td><td class="mono">${num(r.edge,3)}</td><td class="l">${esc(r.reason)}</td></tr>`);
+  const mis = (D?.trades?.missed||[]).slice(-60).reverse().map(r=>`<tr><td>${tsg(r.start,1)}</td><td>${esc(r.by)}</td><td class="mono pos">${sgn(r.pnl)}</td><td class="l">${esc(r.why_champion_passed)}</td></tr>`);
+  return `<div class="grid" style="margin-top:14px">
+   <div class="card"><h2>Open simulated positions</h2>${table(H, open, 'No open positions.')}</div>
+   <div class="card"><h2>Completed simulated trades</h2>${table(H, closed, 'No completed trades yet.')}
+   <p class="note">Fills walk the real Polymarket order book level by level (taking at most part of each level), pay the market's taker fee, respect the 5-share minimum, and settle at $1 or $0. Early exits sell at the bid.</p></div>
+   <div class="card"><h2>Every simulated order</h2>${table(['Time','Side','Limit','Budget','Filled','Avg','Fee','_Status','_Fills (shares@price)'], orders, 'No orders yet.')}</div>
+   <div class="grid g2e"><div class="card"><h2>Rejected opportunities</h2>${table(['Time','Side','Model','Edge','_Reason'], rej, 'None yet.')}</div>
+   <div class="card"><h2>Missed opportunities</h2>${table(['Window','Found by','Shadow P&L','_Why the champion passed'], mis, 'None yet.')}
+   <p class="note">A challenger traded and won while the champion stayed out. Useful evidence for the Strategy Lab, not a reason to change by itself.</p></div></div>
+  </div>`;
+}
+function dailyHTML(d, short){
+  const obs = (d.observations||[]).map(o=>`<li>${ev(o.evidence)} ${esc(o.text)}</li>`).join('');
+  const pro = (d.proposals||[]).map((o,i)=>`<li>${ev(o.evidence)} ${esc(o.text)}${o.why?` <span class="note">(${esc(o.why)})</span>`:''}</li>`).join('');
+  return `<div class="entry"><div class="meta"><b>${esc(d.day)} — Daily Learning Report</b><span>champion ${esc(d.champion)}</span></div>
+   <div class="kv"><div>Markets analysed</div><div class="mono">${d.markets_analysed} of ${d.markets_seen}</div>
+   <div>Predictions made (directional calls at 150s)</div><div class="mono">${d.predictions_made}</div>
+   <div>Correct / incorrect</div><div class="mono">${d.correct} / ${d.incorrect}</div>
+   <div>Brier score (AI vs market)</div><div class="mono">${num(d.brier,4)} vs ${num(d.market_brier,4)}</div>
+   <div>Simulated trades</div><div class="mono">${d.simulated_trades} · win rate ${pct(d.win_rate)}</div>
+   <div>P&L (fees paid)</div><div class="mono ${cls(d.pnl)}">${sgn(d.pnl)} (${usd(d.fees)})</div>
+   <div>Experiments started / accepted / rejected</div><div class="mono">${d.experiments?.started??0} / ${d.experiments?.accepted??0} / ${d.experiments?.rejected??0}</div></div>
+   ${short?'':`<h3 style="margin-top:10px">Today's observations</h3><ul>${obs}</ul><h3 style="margin-top:10px">Proposed improvements</h3><ul>${pro||'<li class="note">None today.</li>'}</ul>`}
+   ${short?`<ul style="margin-top:8px">${obs}</ul>`:''}</div>`;
+}
+function tradeEntry(e){
+  return `<div class="entry"><div class="meta"><b>Trade #${esc(e.trade)} · ${side(e.side)} · ${e.result==='Correct'?'<span class="tag w">Correct</span>':'<span class="tag l">Incorrect</span>'} <span class="mono ${cls(e.pnl)}">${sgn(e.pnl)}</span></b><span>${tsg(e.ts,1)} · ${esc(e.strategy)} / ${esc(e.model)}</span></div>
+   <div class="kv"><div>Market</div><div>${esc((e.title||e.slug||'').replace('Bitcoin Up or Down - ',''))}</div><div>Entry</div><div class="mono">$${num(e.entry_price,3)} × ${num(e.shares,2)} at ${e.t_entry}s · fee ${usd(e.fee,3)}</div>
+   <div>Estimated probability</div><div class="mono">${pct(e.prob,0)} (edge ${num(e.edge,3)})</div><div>Conditions</div><div>${esc(e.regime)} ${e.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>
+   <p style="margin:8px 0 4px"><b>AI analysis:</b> ${esc(e.analysis)}</p>
+   ${(e.facts||[]).length?`<ul>${e.facts.map(x=>`<li>${ev('measured')} ${esc(x)}</li>`).join('')}</ul>`:''}
+   <p class="note" style="margin:6px 0 0"><b>Learning action:</b> ${esc(e.learning_action)}</p></div>`;
+}
+function expEntry(e){
+  return `<div class="entry"><div class="meta"><b>${esc(e.title)}</b><span>${tsg(e.ts,1)} · ${esc(e.stage)} ${ev(e.evidence)}</span></div>
+   <div class="kv">${e.goal?`<div>Trying to improve</div><div>${esc(e.goal)}</div>`:''}${e.change?`<div>What changed</div><div>${esc(e.change)}</div>`:''}
+   ${e.test?`<div>How it is tested</div><div>${esc(e.test)}</div>`:''}${e.result?`<div>Result</div><div>${esc(e.result)}</div>`:''}${e.origin?`<div>Origin</div><div>${esc(e.origin)}</div>`:''}</div></div>`;
+}
+function pJournal(){
+  if(!D) return '<div class="empty">Loading…</div>';
+  const J = D.journal;
+  const F = [['all','Everything'],['feed','Live activity'],['daily','Daily reports'],['trades','Trade analysis'],['exp','Strategy development'],['disc','Discoveries'],['models','Model history'],['integrity','Data integrity']];
+  const chips = F.map(([k,n])=>`<button class="chip ${jfilter===k?'on':''}" data-j="${k}">${n}</button>`).join('');
+  after.push(()=>document.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>{jfilter=b.dataset.j; render();}));
+  const disc = (J.discoveries||[]).slice().reverse().map(d=>`<div class="entry"><div class="meta"><b>${esc(d.title)}</b><span>${tsg(d.ts,1)} ${ev(d.evidence)}${d.updates?` · updated ${d.updates}×`:''}</span></div>${esc(d.body)}</div>`).join('');
+  const mods = (J.models||[]).slice().reverse().map(d=>`<div class="entry"><div class="meta"><b>${esc(d.title)}</b><span>${tsg(d.ts,1)}</span></div>${esc(d.body)}</div>`).join('');
+  const integ = (J.integrity||[]).slice().reverse().map(d=>`<tr><td>${tsg(d.ts,1)}</td><td>${esc(d.kind)}</td><td class="l">${esc(d.detail)}</td></tr>`);
+  const sec = {
+    feed: `<div class="card"><h2>AI activity</h2><div class="feed" style="max-height:none">${feedHTML(L.activity.length>(D.activity||[]).length?L.activity:D.activity, 400)}</div></div>`,
+    daily: `<div class="card"><h2>Daily learning reports</h2>${(J.daily||[]).slice().reverse().map(d=>dailyHTML(d)).join('')||'<div class="empty">The first report is written after midnight (SGT).</div>'}</div>`,
+    trades: `<div class="card"><h2>Individual trade analysis</h2>${(J.trades||[]).slice(-80).reverse().map(tradeEntry).join('')||'<div class="empty">No trades analysed yet.</div>'}</div>`,
+    exp: `<div class="card"><h2>Strategy development journal</h2>${(J.experiments||[]).slice(-80).reverse().map(expEntry).join('')||'<div class="empty">No experiments yet.</div>'}</div>`,
+    disc: `<div class="card"><h2>Discoveries</h2><p class="note">Green = measured from recorded outcomes. Amber = the AI's hypothesis, not yet proven.</p>${disc||'<div class="empty">Discoveries appear after enough markets have resolved.</div>'}</div>`,
+    models: `<div class="card"><h2>Model history</h2>${mods||'<div class="empty">–</div>'}</div>`,
+    integrity: `<div class="card"><h2>Data integrity log</h2>${table(['Time','Kind','_Detail'], integ, 'No data problems recorded.')}</div>`,
+  };
+  let body;
+  if(jfilter==='all') body = `<div class="grid g2"><div class="grid">${sec.daily.replace('<div class="card">','<div class="card">')}${sec.trades}</div><div class="grid">${sec.feed}${sec.disc}${sec.exp}</div></div>`;
+  else body = sec[jfilter];
+  return `<div style="margin-top:14px"><div class="chips">${chips}</div>${body}</div>`;
+}
+function pLab(){
+  if(!D) return '<div class="empty">Loading…</div>';
+  const S = D.settings||L.settings||{};
+  const rows = (D.lab||[]).map(x=>{ const t = x.test||{}; const need = S.min_shadow_markets_for_promotion||150, needT = S.min_shadow_trades_for_promotion||25;
+    const st = {champion:'<span class="tag w">champion</span>',backup:'<span class="tag">backup</span>',shadow:'<span class="tag" style="color:var(--hyp)">testing</span>',retired:'<span class="tag l">retired</span>'}[x.status]||esc(x.status);
+    const prog = x.status==='shadow' ? `${Math.min(t.windows||x.shadow.windows,need)}/${need} mkts · ${Math.min(x.shadow.trades,needT)}/${needT} trades` : '';
+    return `<tr><td>${esc(x.id)}</td><td>${st}</td><td class="l">${esc(x.note)}<div class="note">${esc(x.rules)}</div><div class="note">model ${esc(x.model)}: ${esc(x.model_desc)}</div>${x.retired_reason?`<div class="note neg">${esc(x.retired_reason)}</div>`:''}</td><td>${esc(x.origin)}</td><td class="mono">${x.shadow.windows}</td><td class="mono">${x.shadow.trades}</td><td class="mono">${x.shadow.trades?pct(x.shadow.wins/x.shadow.trades,0):'–'}</td><td class="mono ${cls(x.shadow.pnl)}">${sgn(x.shadow.pnl)}</td><td class="mono">${t.mean_diff==null?'–':sgn(t.mean_diff,3)}</td><td class="mono">${t.lo==null?'–':sgn(t.lo,3)}</td><td class="note">${prog}${x.replay?`<div>replay ${sgn(x.replay.cand_pnl)} vs ${sgn(x.replay.champ_pnl)}</div>`:''}</td></tr>`; });
+  const active = (D.lab||[]).filter(x=>['champion','backup','shadow'].includes(x.status));
+  const champ = active.find(x=>x.status==='champion');
+  return `<div class="grid" style="margin-top:14px">
+   <div class="card"><h2>How a strategy gets promoted</h2><ol style="margin:0;padding-left:18px">
+   <li>The AI proposes a change (from error analysis, from model research, or by exploring nearby settings). It is logged as a <span class="badge b-hyp">hypothesis</span>.</li>
+   <li><b>Replay test:</b> the change and the champion are replayed on recorded markets with one extra tick of slippage on every fill. Clearly worse ideas are rejected here.</li>
+   <li><b>Shadow test:</b> it then trades virtually on live markets it has never seen, alongside the champion, on the same order books.</li>
+   <li><b>Promotion:</b> only after ${S.min_shadow_markets_for_promotion||150}+ markets and ${S.min_shadow_trades_for_promotion||25}+ trades, if it beats the champion by a margin that survives a bootstrap test (corrected for how many ideas are being tested at once). The old champion is kept as a backup.</li>
+   <li><b>Rollback:</b> if the champion's live record turns clearly negative, the backup is restored automatically.</li></ol>
+   <p class="note">The AI never edits its own code and never deploys an untested model. Every change is a new numbered version.</p></div>
+   ${champ?`<div class="card"><h2>Champion</h2><h3>${esc(champ.id)} · ${esc(champ.model_desc)}</h3><div class="note">${esc(champ.rules)}</div><div class="kv" style="margin-top:8px"><div>Shadow record</div><div class="mono">${champ.shadow.trades} trades · ${sgn(champ.shadow.pnl)} over ${champ.shadow.windows} markets (fixed $1,000 virtual bankroll)</div></div></div>`:''}
+   <div class="card"><h2>All strategies (${active.length} active)</h2>${table(['ID','Status','_Idea · rules · model','Origin','Markets','Trades','Win','Shadow P&L','Δ/market vs champ','Lower bound','Progress'], rows, 'No strategies yet.')}
+   <p class="note">Shadow P&L uses a fixed $1,000 virtual bankroll so every strategy is compared like for like. "Lower bound" is the conservative estimate of the advantage per market; it must be above $0 to promote.</p></div>
+  </div>`;
+}
+function calSVG(cal, lo, hi){
+  if(!cal?.length) return '<div class="empty">Needs more resolved predictions.</div>';
+  const W=320,H=220,P=30, x=v=>P+(v-lo)/(hi-lo)*(W-2*P), y=v=>H-P-(v-lo)/(hi-lo)*(H-2*P);
+  const pts = cal.map(c=>`<circle cx="${x(c.pred)}" cy="${y(c.actual)}" r="${Math.min(9,3+Math.sqrt(c.n)/3)}" fill="${css('--acc')}" fill-opacity=".75"><title>predicted ${pct(c.pred)} · actual ${pct(c.actual)} · n=${c.n}</title></circle>`).join('');
+  const ticks=[lo,(lo+hi)/2,hi].map(v=>`<text x="${x(v)}" y="${H-P+14}" text-anchor="middle">${pct(v,0)}</text><text x="${P-4}" y="${y(v)+3}" text-anchor="end">${pct(v,0)}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}"><rect x="${P}" y="${P}" width="${W-2*P}" height="${H-2*P}" fill="none" stroke="${css('--line')}"/><line x1="${x(lo)}" y1="${y(lo)}" x2="${x(hi)}" y2="${y(hi)}" stroke="${css('--muted')}" stroke-dasharray="4 4"/>${pts}${ticks}<text x="${W/2}" y="${H-2}" text-anchor="middle">predicted</text><text x="8" y="${H/2}" transform="rotate(-90 8 ${H/2})" text-anchor="middle">actual</text></svg>`;
+}
+function pPerf(){
+  if(!D) return '<div class="empty">Loading…</div>';
+  const P = D.performance||{};
+  const days = (P.days||[]).slice().reverse().map(d=>`<tr><td>${esc(d.day)}</td><td class="mono">${d.markets}</td><td class="mono">${d.calls}</td><td class="mono">${d.calls?pct(d.correct/d.calls):'–'}</td><td class="mono">${num(d.brier,4)}</td><td class="mono">${num(d.market_brier,4)}</td><td class="mono ${cls(d.pnl)}">${sgn(d.pnl)}</td></tr>`);
+  const mc = (P.model_compare||[]).map(m=>`<tr><td>${esc(m.model)}</td><td class="l">${esc(m.desc)}</td><td class="mono">${m.markets}</td><td class="mono">${num(m.logloss,4)}</td></tr>`);
+  const R = P.research;
+  const rr = (R?.candidates||[]).map(c=>`<tr><td class="l">${esc(c.model)}</td><td class="mono">${num(c.holdout_logloss,4)}</td><td class="mono">${num(c.champion_logloss,4)}</td><td class="mono ${cls(c.improvement)}">${num(c.improvement,4)}</td><td class="mono ${cls(c.lower_bound)}">${num(c.lower_bound,4)}</td><td class="mono">${c.markets}</td></tr>`);
+  return `<div class="grid" style="margin-top:14px">
+   <div class="grid g2e"><div class="card"><h2>Calibration · official predictions (P(UP) at 150s)</h2>${calSVG(P.calibration_official,0,1)}<p class="note">Dots on the dashed line = when the AI says 70%, it happens about 70% of the time. Dot size = number of markets. ${P.official_n||0} markets.</p></div>
+   <div class="card"><h2>Calibration · trades (confidence in the side bought)</h2>${calSVG(P.calibration_trades,0.5,1)}<p class="note">If dots sit below the line the AI is over-confident when it trades.</p></div></div>
+   <div class="card"><h2>Accuracy and profit by day</h2>${table(['Day','Markets','Calls','Hit rate','AI Brier','Market Brier','P&L'], days, 'Builds up day by day.')}<p class="note">Brier score: 0 is perfect, 0.25 is a coin flip. The market's own price is the benchmark the AI has to beat.</p></div>
+   <div class="grid g2e"><div class="card"><h2>Model comparison (last 300 markets, log loss)</h2>${table(['Model','_Description','Markets','Log loss'], mc, 'Needs more markets.')}<p class="note">Lower is better. Scored at 30s, 90s, 150s, 210s and 270s into each market.</p></div>
+   <div class="card"><h2>Latest model research</h2>${R?`<div class="note" style="margin-bottom:6px">${tsg(R.ts,1)} · trained on ${num(R.train_rows,0)} checkpoints · judged on ${R.holdout_markets} unseen markets</div>`:''}${table(['_Candidate','Holdout LL','Champion LL','Improvement','Lower bound','Markets'], rr, 'Runs every 3 hours once there is enough data.')}</div></div>
+  </div>`;
+}
+function pHistory(){
+  if(!D) return '<div class="empty">Loading…</div>';
+  const H = D.history||{};
+  const ch = (H.champions||[]).slice().reverse().map((h,i,a)=>`<div class="entry"><div class="meta"><b>Version ${h.version||a.length-i} · ${esc(h.sid)}</b><span>${tsg(h.since,1)} → ${h.until?tsg(h.until,1):'now'}</span></div>
+     <div class="kv"><div>Why</div><div>${esc(h.reason)}</div><div>Model</div><div>${esc(h.model)} · ${esc(h.model_desc)}</div><div>Rules</div><div>${esc(h.rules)}</div>
+     <div>Live record</div><div class="mono">${h.live?.trades||0} trades · win ${pct(h.live?.win_rate)} · <span class="${cls(h.live?.pnl)}">${sgn(h.live?.pnl)}</span></div>
+     ${h.test?`<div>Promotion evidence</div><div class="mono">${h.test.windows} markets · ${sgn(h.test.pnl)} vs ${sgn(h.test.champ_pnl)} · lower bound ${sgn(h.test.lo,3)}/market</div>`:''}</div></div>`).join('');
+  const ms = (H.models||[]).slice().reverse().map(m=>`<tr><td>${esc(m.id)}</td><td>${esc(m.kind)}</td><td class="l">${esc(m.desc)}<div class="note">${esc(m.note)}</div></td><td>${esc(m.parent||'')}</td><td>${tsg(m.created,1)}</td></tr>`);
+  return `<div class="grid g2" style="margin-top:14px"><div class="card"><h2>Champion versions</h2>${ch||'<div class="empty">–</div>'}</div>
+   <div class="card"><h2>Every model ever trained</h2>${table(['ID','Kind','_Description','Parent','Created'], ms)}</div></div>`;
+}
+function pSettings(){
+  const S = L.settings||{};
+  const rows = Object.entries(S).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="mono">${esc(v)}</td></tr>`);
+  return `<div class="grid g2" style="margin-top:14px">
+   <div class="card"><h2>Current settings</h2>${table(['Setting','Value'], rows)}
+   <p class="note">To change them, edit <a href="https://github.com/${OWNER}/${REPO}/edit/main/pm5/settings.json" target="_blank" rel="noopener">pm5/settings.json</a> on GitHub and commit. The bot re-reads it about every 10 minutes. Change <b>reset_token</b> to any new value to restart the paper account at <b>starting_balance</b> (learning is kept).</p></div>
+   <div class="grid">
+   <div class="card"><h2>Controls</h2><ul>
+     <li><b>Pause:</b> GitHub → Actions → "PM5 BTC 5-min paper AI" → ⋯ → Disable workflow.</li>
+     <li><b>Resume:</b> same place → Enable workflow (it restarts within the hour, or press Run workflow).</li>
+     <li><b>Memory:</b> stored on the <a href="https://github.com/${OWNER}/${REPO}/tree/${BR}" target="_blank" rel="noopener">${BR}</a> branch (state.json), so it survives restarts.</li></ul></div>
+   <div class="card"><h2>Paper trading only</h2><p>This system has no live-trading mode and no switch to turn one on. It holds no keys and has no code that places orders.</p>
+   <p class="note">Before real money could even be considered, all of these would be needed: legal eligibility and geographic access (Polymarket's international site blocks Singapore), verified account permissions, extensive backtesting, a substantial paper record, positive returns after realistic costs, acceptable drawdown, an independent review of the trading and risk systems, and explicit human approval.</p></div></div>
+  </div>`;
+}
+window.addEventListener('hashchange', ()=>{ const p = location.hash.slice(1).replace(/-/g,' '); if(PAGES.includes(p) && p!==page){ page=p; render(); } });
+load(true);
+setInterval(()=>load(false), 90000);
+setInterval(()=>load(true), 600000);
+setInterval(()=>{ if(L && (page==='Overview'||page==='Live AI')) header(); }, 15000);
+</script>
+</body></html>

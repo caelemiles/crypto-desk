@@ -1,3 +1,6 @@
 state/
 __pycache__/
 *.tmp
+pm5/work/
+pm5work/
+pm5publish/
