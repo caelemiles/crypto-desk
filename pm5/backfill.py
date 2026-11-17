@@ -114,7 +114,7 @@ def run(db, journal, start_ts, end_ts, budget_s=420, label="Backfilling"):
     last = MK.window_start(end_ts) - C.WINDOW
     starts = list(range(first, last + 1, C.WINDOW))
     have = {r[0] for r in db.q("SELECT DISTINCT m.start FROM markets m JOIN checkpoints c ON c.slug=m.slug "
-                               "WHERE m.start>=? AND m.start<=?", (first, last))}
+                               "WHERE m.start>=? AND m.start<=? AND c.schema=?", (first, last, F.SCHEMA))}
     todo = [s for s in starts if s not in have]
     if not todo:
         return 0
@@ -153,5 +153,6 @@ def run(db, journal, start_ts, end_ts, budget_s=420, label="Backfilling"):
 
 
 def oldest_history(db):
-    r = db.one("SELECT MIN(start) FROM markets WHERE outcome IS NOT NULL")
+    r = db.one("SELECT MIN(m.start) FROM markets m JOIN checkpoints c ON c.slug=m.slug "
+               "WHERE m.outcome IS NOT NULL AND c.schema=?", (F.SCHEMA,))
     return r[0] if r and r[0] else None

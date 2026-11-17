@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from util import norm_cdf
 
-SCHEMA = 1
+SCHEMA = 2  # v2: volatility for the fair value from 5s/10s returns (1s returns of smoothed Chainlink understate risk)
 NAMES = [
     "t", "tau", "d_open", "z_fair", "p_fair", "twap_frac", "vol_cl_300", "vol_bn_60", "vol_bn_300", "vol_bn_900",
     "vol_ratio", "ret_bn_10", "ret_bn_30", "ret_bn_60", "ret_bn_180", "lead_5", "flow_30", "flow_120", "volu_60",
@@ -29,6 +29,15 @@ def _std(xs):
 
 def _rets(prices):
     return [math.log(b / a) for a, b in zip(prices, prices[1:]) if a > 0 and b > 0]
+
+
+def _sigma_k(series, ts, back, k):
+    """Per-second volatility from k-second returns over the last `back` seconds (robust to smoothing and noise)."""
+    pts = [_price_at(series, s, max_back=2) for s in range(int(ts) - back, int(ts) + 1, k)]
+    pts = [p for p in pts if p]
+    r = _rets(pts)
+    sd = _std(r)
+    return sd / math.sqrt(k) if sd else None
 
 
 def _closes(series, ts, back):
@@ -115,9 +124,10 @@ def build(ts, start, end, twap_secs, open_ref, cl, bn, eth, ext, book, prev_outc
     cl300 = _closes(ref_series, ts, 300)
     vcl = _std(_rets(cl300)) if cl_now_ts is not None else None
     f[IDX["vol_cl_300"]] = vcl
-    sigma = vcl or vbn300
-    if sigma and vbn300:
-        sigma = max(sigma, 0.5 * vbn300)  # Chainlink is smoothed; do not let it claim near-zero risk
+    # risk for the fair value: the larger of Binance 5-second and reference 10-second volatility over 15 minutes.
+    # (1-second returns of the smoothed Chainlink series understate risk and made early versions over-confident.)
+    cands = [v for v in (_sigma_k(bn, ts, 900, 5), _sigma_k(ref_series, ts, 900, 10) if ref_series else None) if v]
+    sigma = max(cands) if cands else vbn300
 
     if price and open_ref:
         f[IDX["d_open"]] = math.log(price / open_ref)

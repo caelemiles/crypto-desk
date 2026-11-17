@@ -96,7 +96,6 @@ class Controller:
                                      "run": {"id": self.run_id, "started": self.t0, "ends": self.deadline},
                                      "activity": self.j.feed[-40:]})
         self.pub.push("pm5 starting")
-        self.official_wait = dict((int(k), v) for k, v in state.get("official_wait", {}).items())
 
     # ------------------------------------------------------------------ setup
     def _apply_reset(self, state):
@@ -162,7 +161,7 @@ class Controller:
         if m:
             self.pending.add(S)
             self.life.refresh_meta(S, now)
-            self.life.get_open(S, now)
+            self.life.get_open(S, now, self.cl)
             self._book(m, now)
         cp = int(t // C.CHECK_EVERY * C.CHECK_EVERY)
         if 5 <= cp <= 295 and (S, cp) not in self.done_cp:
@@ -337,63 +336,60 @@ class Controller:
 
     # ------------------------------------------------------------------ resolution
     def _resolutions(self, now):
-        if now - self.t["resolve"] < 4:
+        """Settle on Polymarket's official resolution (usually ~80s after the close). If it is late, settle
+        provisionally on the AI's own Chainlink TWAP comparison and correct it when the official result lands."""
+        if now - self.t["resolve"] < 10:
             return
         self.t["resolve"] = now
         for S in sorted(self.pending):
             E = S + C.WINDOW
-            if now < E + 3:
+            if now < E + 20:
                 continue
             w = self.brain.window(S)
-            if w.get("outcome"):
+            if w.get("outcome_src") == "official":
                 self.pending.discard(S)
                 continue
-            if now > E + 3600:
+            if now > E + 6 * 3600:
                 self.pending.discard(S)
-                self.j.integrity_event("resolution", f"{MK.slug_for(S)}: no result after 1 hour; left unresolved")
+                self.j.integrity_event("resolution", f"{MK.slug_for(S)}: no official result after 6 hours")
                 continue
-            try:
-                cp = MK.crypto_price(S)
-            except FetchError as e:
-                self.h.bad("reference", e)
-                continue
-            if not (cp["completed"] and cp["open"] and cp["close"]):
-                continue
-            outcome = "UP" if cp["close"] >= cp["open"] else "DOWN"
             path = [(ts, p) for ts, p in self.cl.series(S - 60) if ts <= E]
             twap_pts = [p for ts, p in path if E - 60 < ts <= E]
             our_twap = sum(twap_pts) / len(twap_pts) if len(twap_pts) >= 40 else None
-            self.db.set_result(MK.slug_for(S), cp["open"], cp["close"], outcome, "crypto-price")
-            self.brain.on_resolution(S, outcome, cp["open"], cp["close"], "reference", path, our_twap)
-            self.j.activity("Comparing prediction with actual outcome", kind="learning")
-            o = w.get("official")
-            if o and o["call"] != "NO CALL":
-                self.j.activity(f"Prediction {o['call']} at {OFFICIAL_T}s was {'correct' if o['correct'] else 'incorrect'}",
-                                kind="learning")
-            self.j.activity("Updating learning dataset", kind="learning")
-            for pos in [p for p in self.brain.account.closed[-3:] if p.get("start") == S]:
-                self.db.x("INSERT OR REPLACE INTO trades VALUES(?,?,?)", (pos["id"], pos["slug"], json.dumps(pos)))
-            self.pending.discard(S)
-            self.official_wait[S] = outcome
-        # official on-chain confirmation, a few minutes later
-        if now - self.t["official"] >= 60:
-            self.t["official"] = now
-            for S, prov in list(self.official_wait.items()):
-                if now < S + C.WINDOW + 120:
-                    continue
-                try:
-                    off = MK.official_outcome(S)
-                except FetchError:
-                    continue
-                if off:
-                    self.db.set_official(MK.slug_for(S), off)
-                    if off != prov:
-                        self.j.integrity_event("resolution", f"{MK.slug_for(S)}: official {off} differs from reference {prov}")
-                        self.db.set_result(MK.slug_for(S), None, None, off, "official")
-                        self.brain.on_resolution(S, off, None, None, "official", [], None)
-                    self.official_wait.pop(S, None)
-                elif now > S + C.WINDOW + 7200:
-                    self.official_wait.pop(S, None)
+            open_ref = self.life.open_price.get(S)
+            our = None if (our_twap is None or open_ref is None) else ("UP" if our_twap >= open_ref else "DOWN")
+            w["our_call"] = our
+            try:
+                off = MK.official_outcome(S)
+                self.h.ok("resolution")
+            except FetchError as e:
+                self.h.bad("resolution", e)
+                off = None
+            if off:
+                self.db.set_result(MK.slug_for(S), open_ref, our_twap, off, "official")
+                self.db.set_official(MK.slug_for(S), off)
+                if our and our != off:
+                    self.j.integrity_event("resolution", f"{MK.slug_for(S)}: own TWAP said {our}, official {off} "
+                                                         f"(margin {(our_twap / open_ref - 1) * 1e4:+.2f} bp)")
+                self.brain.on_resolution(S, off, open_ref, our_twap, "official", path, our_twap)
+                self.pending.discard(S)
+                self._after_resolution(S, w)
+            elif our and not w.get("outcome") and now > E + 900:
+                self.db.set_result(MK.slug_for(S), open_ref, our_twap, our, "own TWAP (provisional)")
+                self.brain.on_resolution(S, our, open_ref, our_twap, "own TWAP (provisional)", path, our_twap)
+                self.j.activity(f"Official result late for {MK.slug_for(S)}: settled provisionally on the AI's own TWAP",
+                                kind="resolve")
+                self._after_resolution(S, w)
+
+    def _after_resolution(self, S, w):
+        self.j.activity("Comparing prediction with actual outcome", kind="learning")
+        o = w.get("official")
+        if o and o["call"] != "NO CALL":
+            self.j.activity(f"Prediction {o['call']} at {OFFICIAL_T}s was {'correct' if o['correct'] else 'incorrect'}",
+                            kind="learning")
+        self.j.activity("Updating learning dataset", kind="learning")
+        for pos in [p for p in self.brain.account.closed[-3:] if p.get("start") == S]:
+            self.db.x("INSERT OR REPLACE INTO trades VALUES(?,?,?)", (pos["id"], pos["slug"], json.dumps(pos)))
 
     # ------------------------------------------------------------------ periodic jobs
     def _periodic(self, now):
@@ -460,7 +456,6 @@ class Controller:
         st = self.brain.save()
         st["journal"] = self.j.to_dict()
         st["pending"] = sorted(self.pending)
-        st["official_wait"] = {str(k): v for k, v in self.official_wait.items()}
         st["saved"] = time.time()
         return st
 

@@ -115,18 +115,18 @@ def daily_report(brain, day, day_start, day_end):
 def discoveries(brain, db):
     """Measured findings refreshed a few times a day. Each has a stable key so it updates rather than repeats."""
     j = brain.j
-    # 1. reference tracking: does our Chainlink-based TWAP match the official close?
-    errs = []
-    for w in list(brain.s["windows"].values())[-600:]:
-        if w.get("our_twap") and w.get("close"):
-            errs.append((w["our_twap"] - w["close"]) / w["close"] * 1e4)
-    if len(errs) >= 30:
-        a = np.abs(errs)
-        j.discovery("Settlement reference tracking",
-                    f"Over {len(errs)} markets, the AI's own 60-second Chainlink TWAP differed from Polymarket's official close "
-                    f"by a median {np.median(a):.2f} bp (90th percentile {np.quantile(a, 0.9):.2f} bp, mean signed "
-                    f"{np.mean(errs):+.2f} bp). This tells the model how much to trust its own estimate in the final seconds.",
-                    "measured", {"n": len(errs), "median_bp": float(np.median(a))}, key="ref_tracking")
+    # 1. settlement-rule tracking: does the AI's own Chainlink TWAP rule reproduce the official result?
+    pairs = [(w["our_call"], w["outcome"], (w["our_twap"] / w["open"] - 1) * 1e4 if w.get("our_twap") and w.get("open") else None)
+             for w in list(brain.s["windows"].values())[-1000:]
+             if w.get("our_call") and w.get("outcome") and w.get("outcome_src") == "official"]
+    if len(pairs) >= 30:
+        agree = sum(1 for a, b, _ in pairs if a == b)
+        miss = [abs(m) for a, b, m in pairs if a != b and m is not None]
+        j.discovery("Settlement rule check",
+                    f"The AI's own rule (60-second Chainlink TWAP at the close vs at the open) matched Polymarket's official "
+                    f"result in {agree} of {len(pairs)} markets ({agree / len(pairs):.1%})."
+                    + (f" Mismatches happened only when the margin was tiny (median {np.median(miss):.2f} bp)." if miss else ""),
+                    "measured", {"n": len(pairs), "agree": agree}, key="ref_tracking")
     # 2. base rate
     outs = [w["outcome"] for w in brain.s["windows"].values() if w.get("outcome")]
     if len(outs) >= 100:

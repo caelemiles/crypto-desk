@@ -190,7 +190,7 @@ class FakeSpot(feeds.Spot):
 
 R.ChainlinkStream = FakeCL
 R.Spot = FakeSpot
-MK.official_outcome = lambda s: None if Clock.t < s + 540 else ("UP" if twap(s + 300) >= twap(s) else "DOWN")
+MK.official_outcome = lambda s: None if Clock.t < s + 380 else ("UP" if twap(s + 300) >= twap(s) else "DOWN")
 R.MK.official_outcome = MK.official_outcome
 
 if __name__ == "__main__":
