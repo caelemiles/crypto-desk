@@ -1,5 +1,5 @@
 {
-  "_help": "Edit these on GitHub and commit. The bot re-reads this file about every 10 minutes. Paper trading only: there is no live-trading setting.",
+  "_help": "Edit these on GitHub and commit. The bot re-reads this file about every 10 minutes. Paper trading only: there is no live-trading setting. This file is for the BTC bot; settings-eth.json is for the ETH bot.",
   "starting_balance": 1000,
   "reset_token": "1",
   "max_stake_pct": 0.03,
@@ -9,5 +9,6 @@
   "liquidity_take_pct": 0.6,
   "min_shadow_markets_for_promotion": 150,
   "min_shadow_trades_for_promotion": 25,
-  "max_challengers": 10
+  "max_challengers": 10,
+  "target_win_rate": 0.8
 }

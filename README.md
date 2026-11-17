@@ -43,7 +43,9 @@ A second, separate bot that watches every Polymarket "Bitcoin Up or Down" 5-minu
 forecasts each one, paper-trades it against the real order book, and keeps improving itself under strict testing.
 **Paper money only:** no wallet, no keys, no code that places orders.
 
-**Dashboard:** `https://caelemiles.github.io/crypto-desk/pm5/`
+**Dashboards:** BTC `https://caelemiles.github.io/crypto-desk/pm5/` · ETH `https://caelemiles.github.io/crypto-desk/pm5/?asset=eth`
+
+The same code runs twice: `pm5.yml` (BTC, memory on `pm5-data`) and `pm5-eth.yml` (ETH, `PM5_ASSET=eth`, memory on `pm5-eth-data`, settings in `pm5/settings-eth.json`).
 
 ## How it works
 
@@ -56,6 +58,7 @@ forecasts each one, paper-trades it against the real order book, and keeps impro
 | Strategy Development | `pm5/strategy.py` | rules for when, which side, how much (fractional Kelly), and early exits |
 | Trading Engine | `pm5/paper.py` | walks the real book level by level, partial fills, 5-share minimum, Polymarket's crypto taker fee (0.07 × p × (1−p) per share), settlement at $1/$0, early exits at the bid |
 | Learning Engine | `pm5/learning.py` | evaluates every market, analyses every trade, proposes experiments, replay-tests them, shadow-tests them live, promotes only significant winners, rolls back on deterioration |
+| Pattern search | `pm5/patterns.py` | every 5 min: a measured account of why each market moved; every hour: tests which signals beat the market price, turns real patterns into strategies |
 | Learning Journal | `pm5/journal.py`, `pm5/report.py` | live activity feed, trade analyses, daily reports, strategy experiments, discoveries (measured vs hypothesis), model history |
 
 History (Chainlink, Binance, order-book snapshots, every 5-second checkpoint, results) is stored in SQLite (Actions cache).

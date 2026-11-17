@@ -602,6 +602,7 @@ class Brain:
         self._check_rollback(now)
         self._check_stand_down(now)
         self._seed_v2()
+        self._seed_v3()
         champ = self.champion
         if not champ:
             return
@@ -625,7 +626,10 @@ class Brain:
             enough = len(diffs) >= self.cfg["min_shadow_markets_for_promotion"] and led["trades"] >= self.cfg["min_shadow_trades_for_promotion"]
             observing = bool(champ.rules.get("observe"))
             model_ok = observing or ll is None or ll["mean"] >= -0.002 or self.strats[sid].model_id == champ.model_id
-            if enough and lo is not None and lo > 0 and c["test"]["pnl"] > 0 and model_ok:
+            win_rate = led["wins"] / led["trades"] if led["trades"] else 0.0
+            c["test"]["win_rate"] = win_rate
+            win_ok = win_rate >= self.cfg.get("target_win_rate", 0.0)
+            if enough and lo is not None and lo > 0 and c["test"]["pnl"] > 0 and model_ok and win_ok:
                 self._promote(sid, c, now)
                 return
             if len(diffs) >= self.cfg["min_shadow_markets_for_promotion"] and hi is not None and hi < 0:
@@ -751,6 +755,29 @@ class Brain:
                                "title": f"{st.id}: {why.split(':')[0]}", "goal": why, "change": st.describe(),
                                "test": "Shadow-traded on live markets; must show a significant profit to take over.",
                                "evidence": "hypothesis", "origin": "day-1 review"})
+
+    def _seed_v3(self):
+        """Ideas aimed at the user's 80% win-rate target (they still have to be profitable)."""
+        if self.s["last"].get("seed_v3"):
+            return
+        self.s["last"]["seed_v3"] = time.time()
+        fair = next((s.model_id for s in self.strats.values() if self.models.get(s.model_id) and
+                     self.models[s.model_id].kind == "fair"), None)
+        if not fair:
+            return
+        ideas = [
+            ({"t_min": 150, "t_max": 270, "min_prob": 0.85, "min_price": 0.6, "max_price": 0.8, "min_edge": 0.04},
+             "Favourites at a fair price: back the side the model rates 85%+ only when it costs 60-80c. "
+             "Hypothesis: an 80%+ win rate is only profitable when the price paid is below the win rate."),
+            ({"t_min": 90, "t_max": 240, "min_prob": 0.8, "min_price": 0.55, "max_price": 0.75, "min_edge": 0.05},
+             "Mid-window favourites with a wide margin of safety (edge 5c+, price at most 75c)."),
+        ]
+        for rules, why in ideas:
+            st = self.add_strategy(fair, rules, note=why.split(":")[0], origin="win-rate target", hypothesis=why)
+            self.j.experiment({"exp": f"E{self._nid('exp'):03d}", "strategy": st.id, "stage": "testing",
+                               "title": f"{st.id}: {why.split(':')[0]}", "goal": why, "change": st.describe(),
+                               "test": "Shadow-traded on live markets; needs a significant profit AND the target win rate.",
+                               "evidence": "hypothesis", "origin": "win-rate target"})
 
     def _check_rollback(self, now):
         champ = self.champion

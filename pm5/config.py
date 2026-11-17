@@ -8,11 +8,24 @@ import os
 from util import http_json
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# Which coin this instance trades. One codebase, one instance per coin (set PM5_ASSET=eth for Ethereum).
+ASSET = os.environ.get("PM5_ASSET", "btc").lower()
+_ASSETS = {
+    "btc": {"name": "BTC", "long": "Bitcoin", "cl": "btc/usd", "bn": "BTCUSDT", "other_bn": "ETHUSDT", "other": "ETH",
+            "cb": "BTC-USD", "okx": "BTC-USDT-SWAP", "okx_ccy": "BTC", "okx_uly": "BTC-USDT", "ct": 0.01, "cp": "BTC",
+            "branch": "pm5-data"},
+    "eth": {"name": "ETH", "long": "Ethereum", "cl": "eth/usd", "bn": "ETHUSDT", "other_bn": "BTCUSDT", "other": "BTC",
+            "cb": "ETH-USD", "okx": "ETH-USDT-SWAP", "okx_ccy": "ETH", "okx_uly": "ETH-USDT", "ct": 0.1, "cp": "ETH",
+            "branch": "pm5-eth-data"},
+}
+A = _ASSETS[ASSET]
 WORK = os.environ.get("PM5_WORK", os.path.join(ROOT, "work"))   # runtime folder (not in git)
 DB_PATH = os.path.join(WORK, "history.sqlite")
 STATE_PATH = os.path.join(WORK, "state.json.gz")
 PUBLISH_DIR = os.environ.get("PM5_PUBLISH", os.path.join(WORK, "publish"))  # pushed to the pm5-data branch
 
+SETTINGS_FILE = "settings.json" if ASSET == "btc" else f"settings-{ASSET}.json"
 PAPER_ONLY = True  # hard-wired. There is deliberately no live execution code anywhere.
 WINDOW = 300       # seconds in one market
 TWAP_SECONDS = 60  # these markets settle on Chainlink's 60-second TWAP (read from the market at runtime too)
@@ -38,6 +51,7 @@ DEFAULTS = {
     "min_shadow_markets_for_promotion": 150,
     "min_shadow_trades_for_promotion": 25,
     "max_challengers": 10,
+    "target_win_rate": 0.80,
 }
 
 LIMITS = {  # guard rails so a typo in settings.json cannot do anything silly
@@ -50,6 +64,7 @@ LIMITS = {  # guard rails so a typo in settings.json cannot do anything silly
     "min_shadow_markets_for_promotion": (50, 5000),
     "min_shadow_trades_for_promotion": (10, 1000),
     "max_challengers": (2, 30),
+    "target_win_rate": (0.5, 0.99),
 }
 
 
@@ -77,11 +92,11 @@ def load_settings():
     repo = os.environ.get("GITHUB_REPOSITORY")
     if repo:
         try:
-            return _sanitize(http_json(f"https://raw.githubusercontent.com/{repo}/main/pm5/settings.json", retries=1)), "github"
+            return _sanitize(http_json(f"https://raw.githubusercontent.com/{repo}/main/pm5/{SETTINGS_FILE}", retries=1)), "github"
         except Exception:  # noqa: BLE001
             pass
     try:
-        with open(os.path.join(ROOT, "settings.json")) as f:
+        with open(os.path.join(ROOT, SETTINGS_FILE)) as f:
             return _sanitize(json.load(f)), "file"
     except (OSError, json.JSONDecodeError):
         return dict(DEFAULTS), "defaults"

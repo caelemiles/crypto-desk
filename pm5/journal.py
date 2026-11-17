@@ -9,7 +9,7 @@ import time
 
 from util import sgt_hm
 
-LIMITS = {"feed": 600, "trades": 1500, "experiments": 800, "discoveries": 400, "models": 400, "integrity": 300}
+LIMITS = {"markets": 600, "feed": 600, "trades": 1500, "experiments": 800, "discoveries": 400, "models": 400, "integrity": 300}
 
 
 class Journal:
@@ -22,6 +22,7 @@ class Journal:
         self.discoveries = d.get("discoveries", [])  # measured findings and hypotheses
         self.models = d.get("models", [])          # model / champion history events
         self.integrity = d.get("integrity", [])    # data problems seen and handled
+        self.markets = d.get("markets", [])        # a measured explanation of every market
         self.seq = d.get("seq", 0)
 
     def to_dict(self):
@@ -43,6 +44,9 @@ class Journal:
         e = self._push("feed", {"text": text, "kind": kind, "time": sgt_hm(time.time())})
         print(f"[{e['time']}] {text}", flush=True)
         return e
+
+    def market_entry(self, entry):
+        return self._push("markets", entry)
 
     def trade(self, entry):
         return self._push("trades", entry)

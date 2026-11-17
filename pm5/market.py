@@ -13,7 +13,7 @@ from util import FetchError, http_json, iso_utc
 
 
 def slug_for(start):
-    return f"btc-updown-5m-{int(start)}"
+    return f"{C.ASSET}-updown-5m-{int(start)}"
 
 
 def window_start(ts):
@@ -110,7 +110,7 @@ def expand_book(cb):
 
 def crypto_price(start):
     """Polymarket's own open/close reference for a window (the Chainlink 'price to beat' and final price)."""
-    d = http_json(f"{C.CRYPTO_PRICE}?symbol=BTC&eventStartTime={iso_utc(start)}&variant=fiveminute"
+    d = http_json(f"{C.CRYPTO_PRICE}?symbol={C.A['cp']}&eventStartTime={iso_utc(start)}&variant=fiveminute"
                   f"&endDate={iso_utc(start + C.WINDOW)}", timeout=6)
     return {"open": d.get("openPrice"), "close": d.get("closePrice"), "completed": bool(d.get("completed"))}
 
@@ -156,7 +156,7 @@ class Lifecycle:
             self.markets[start] = m
             self.db.upsert_market(m)
             self.h.ok("gamma")
-            self.j.activity(f"New BTC five-minute market detected: {m['title']}", kind="market")
+            self.j.activity(f"New {C.A['name']} five-minute market detected: {m['title']}", kind="market")
             return m
         except (FetchError, ValueError, KeyError, TypeError) as e:
             self.failed[start] = now

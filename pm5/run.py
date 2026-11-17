@@ -12,6 +12,7 @@ PAPER TRADING ONLY. No keys, no wallet, no order endpoints.
 """
 import collections
 import json
+import math
 import os
 import signal
 import sys
@@ -21,6 +22,7 @@ import traceback
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import backfill  # noqa: E402
+import patterns  # noqa: E402
 import config as C  # noqa: E402
 import features as F  # noqa: E402
 import market as MK  # noqa: E402
@@ -71,7 +73,7 @@ class Controller:
         self.t0 = time.time()
         self.deadline = self.t0 + minutes * 60
         self.settings, self.settings_src = C.load_settings()
-        self.pub = Publisher(C.PUBLISH_DIR, os.environ.get("GITHUB_REPOSITORY"), os.environ.get("PM5_TOKEN"))
+        self.pub = Publisher(C.PUBLISH_DIR, os.environ.get("GITHUB_REPOSITORY"), os.environ.get("PM5_TOKEN"), branch=C.A["branch"])
         self.pub.init()
         state = self.pub.read("state.json", {}) or {}
         if state and state.get("epoch") != EPOCH:
@@ -380,12 +382,52 @@ class Controller:
                 self.brain.on_resolution(S, off, open_ref, our_twap, "official", path, our_twap)
                 self.pending.discard(S)
                 self._after_resolution(S, w)
+                try:
+                    patterns.explain(self.brain, S, off, open_ref, our_twap, path, self._window_stats(S))
+                    self.j.activity(f"Explained why the market went {off} (see Market explanations)", kind="learning")
+                except Exception as e:  # noqa: BLE001
+                    self.j.integrity_event("explain", f"{type(e).__name__}: {e}")
             elif our and not w.get("outcome") and now > E + 900:
                 self.db.set_result(MK.slug_for(S), open_ref, our_twap, our, "own TWAP (provisional)")
                 self.brain.on_resolution(S, our, open_ref, our_twap, "own TWAP (provisional)", path, our_twap)
                 self.j.activity(f"Official result late for {MK.slug_for(S)}: settled provisionally on the AI's own TWAP",
                                 kind="resolve")
                 self._after_resolution(S, w)
+
+    def _window_stats(self, S):
+        """Order flow, the other coin, volatility and liquidations during one window (for its explanation)."""
+        E = S + C.WINDOW
+        bn = self.spot.btc
+        v = tb = 0.0
+        rets, pre = [], []
+        for s in range(S, E):
+            k, k0 = bn.get(s), bn.get(s - 1)
+            if k:
+                v += k[4]
+                tb += k[5]
+                if k0 and k0[3] > 0:
+                    rets.append(math.log(k[3] / k0[3]))
+        for s in range(S - 900, S):
+            k, k0 = bn.get(s), bn.get(s - 1)
+            if k and k0 and k0[3] > 0:
+                pre.append(math.log(k[3] / k0[3]))
+        out = {"flow": (tb / v - 0.5) if v > 0 else None}
+        if len(rets) > 30 and len(pre) > 100:
+            sd = lambda xs: (sum((x - sum(xs) / len(xs)) ** 2 for x in xs) / (len(xs) - 1)) ** 0.5  # noqa: E731
+            if sd(pre) > 0:
+                out["vol_ratio"] = sd(rets) / sd(pre)
+        o0 = next((self.spot.eth.get(s) for s in range(S, S - 5, -1) if self.spot.eth.get(s)), None)
+        o1 = next((self.spot.eth.get(s) for s in range(E, E - 5, -1) if self.spot.eth.get(s)), None)
+        if o0 and o1:
+            out["other_bp"] = (o1 / o0 - 1) * 1e4
+        liq = {k: v for k, v in self.db.q("SELECT kind, value FROM ext WHERE ts>=? AND ts<=? AND kind IN "
+                                          "('liq_long_5m','liq_short_5m') ORDER BY ts", (E - 30, E + 90))}
+        if liq:
+            tot = liq.get("liq_long_5m", 0) + liq.get("liq_short_5m", 0)
+            if tot > 0:
+                out["liq_usd"] = tot
+                out["liq_short_share"] = liq.get("liq_short_5m", 0) / tot
+        return out
 
     def _after_resolution(self, S, w):
         self.j.activity("Comparing prediction with actual outcome", kind="learning")
@@ -411,6 +453,17 @@ class Controller:
             self.brain.step(now, self.live_rows)
         if now - self.brain.s["last"].get("research", 0) >= 3 * 3600 and early:
             self.research()
+        if now - self.brain.s["last"].get("mine", 0) >= 3600 and early:
+            self.brain.s["last"]["mine"] = now
+            try:
+                res = patterns.mine(self.brain, self.db, now)
+                n_trad = sum(1 for x in res if x["status"] == "tradable")
+                self.j.activity(f"Pattern search: tested {len(res)} signal/time combinations, {n_trad} beat the market "
+                                f"price by enough to trade", kind="research")
+                patterns.launch_patterns(self.brain, self.live_rows)
+            except Exception as e:  # noqa: BLE001
+                self.j.integrity_event("patterns", f"{type(e).__name__}: {e}")
+                traceback.print_exc()
         day = sgt_day(now)
         last_day = self.brain.s["last"].get("report_day")
         if last_day is None:
@@ -494,7 +547,7 @@ class Controller:
         now = time.time()
         ov = report.overview(self.brain, self.marks, now)
         acct = self.brain.account
-        live = {"generated": now, "paper_only": True, "run": {"id": self.run_id, "started": self.t0, "loops": self.loop_n,
+        live = {"generated": now, "paper_only": True, "asset": C.A["name"], "asset_long": C.A["long"], "other": C.A["other"], "run": {"id": self.run_id, "started": self.t0, "loops": self.loop_n,
                                                                "errors": self.loop_errors, "ends": self.deadline,
                                                                "chainlink_reconnects": self.cl.reconnects},
                 "health": self.h.summary(), "overview": ov, "live": self.live,
@@ -511,7 +564,8 @@ class Controller:
                 "trades": {"closed": acct.closed[-400:], "orders": acct.orders[-150:], "rejected": acct.rejected[-150:],
                            "missed": self.brain.s["missed"][-150:]},
                 "equity_curve": acct.equity_curve[-3000:],
-                "journal": {"trades": self.j.trades[-300:], "daily": self.j.daily[-120:], "experiments": self.j.experiments[-300:],
+                "patterns": self.brain.s.get("patterns"), "win_rate_table": patterns.win_rate_note(self.settings["target_win_rate"]),
+                "journal": {"markets": self.j.markets[-200:], "trades": self.j.trades[-300:], "daily": self.j.daily[-120:], "experiments": self.j.experiments[-300:],
                             "discoveries": self.j.discoveries[-120:], "models": self.j.models[-200:],
                             "integrity": self.j.integrity[-120:]},
                 "lab": report.lab(self.brain), "performance": report.performance(self.brain),

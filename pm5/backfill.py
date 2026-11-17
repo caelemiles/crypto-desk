@@ -28,7 +28,7 @@ def _api_klines(start, end):
         data = None
         for attempt in range(3):
             try:
-                data = http_json(f"{C.BINANCE[0]}/klines?symbol=BTCUSDT&interval=1s&startTime={t * 1000}&limit=1000", timeout=10)
+                data = http_json(f"{C.BINANCE[0]}/klines?symbol={C.A['bn']}&interval=1s&startTime={t * 1000}&limit=1000", timeout=10)
                 break
             except FetchError:
                 time.sleep(1 + attempt)
@@ -45,7 +45,7 @@ def _api_klines(start, end):
 
 def _day_archive(day):
     """Binance public archive of 1-second candles for one complete UTC day (YYYY-MM-DD)."""
-    url = f"https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1s/BTCUSDT-1s-{day}.zip"
+    url = f"https://data.binance.vision/data/spot/daily/klines/{C.A['bn']}/1s/{C.A['bn']}-1s-{day}.zip"
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=60) as r:
         blob = r.read()

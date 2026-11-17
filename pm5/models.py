@@ -49,6 +49,14 @@ class Model:
         if k == "market":
             m = F.get(f, "pm_mid_up")
             return None if m is None else clamp(m, P_MIN, P_MAX)
+        if k == "pattern":  # market price nudged by a measured pattern
+            m = F.get(f, "pm_mid_up")
+            if m is None:
+                return None
+            v = F.get(f, self.params["feature"])
+            if v is None or v == 0 or abs(v) <= self.params["dz"]:
+                return clamp(m, P_MIN, P_MAX)
+            return clamp(m + self.params["delta"] * (1 if v > 0 else -1), P_MIN, P_MAX)
         lp = _lf(f, "p_fair")
         if lp is None:
             return None
@@ -121,6 +129,8 @@ class Model:
         k = self.kind
         if k == "market":
             return "Market price (benchmark)"
+        if k == "pattern":
+            return f"Market price + pattern '{self.params.get('label')}' ({self.params.get('delta', 0):+.3f})"
         if k == "fair":
             return f"TWAP fair value, temperature {self.params.get('temp', 1):.2f}"
         if k == "blend":

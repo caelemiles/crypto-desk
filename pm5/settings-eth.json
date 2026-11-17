@@ -1,0 +1,14 @@
+{
+  "_help": "Settings for the ETH 5-minute bot. Edit on GitHub and commit; re-read about every 10 minutes. Paper trading only.",
+  "starting_balance": 1000,
+  "reset_token": "1",
+  "max_stake_pct": 0.03,
+  "daily_loss_limit_pct": 0.08,
+  "max_losses_in_a_row": 6,
+  "kelly_fraction": 0.25,
+  "liquidity_take_pct": 0.6,
+  "min_shadow_markets_for_promotion": 150,
+  "min_shadow_trades_for_promotion": 25,
+  "max_challengers": 10,
+  "target_win_rate": 0.8
+}

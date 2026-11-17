@@ -69,7 +69,7 @@ class ChainlinkStream(threading.Thread):
     def _snapshot(self, connect):
         """Short filtered connection: returns the last ~60s of BTC/USD values (fills gaps after reconnects)."""
         sub = {"action": "subscribe", "subscriptions": [
-            {"topic": "crypto_prices_chainlink", "type": "*", "filters": json.dumps({"symbol": "btc/usd"})}]}
+            {"topic": "crypto_prices_chainlink", "type": "*", "filters": json.dumps({"symbol": C.A["cl"]})}]}
         with connect(C.RTDS_WS, open_timeout=10, close_timeout=2, max_size=2 ** 22) as ws:
             ws.send(json.dumps(sub))
             end = time.time() + 5
@@ -113,14 +113,14 @@ class ChainlinkStream(threading.Thread):
                         except TimeoutError:
                             msg = None
                         if time.time() - last_btc > 15:
-                            raise ConnectionError("no BTC/USD update for 15s")
+                            raise ConnectionError(f"no {C.A['cl']} update for 15s")
                         if not msg or not isinstance(msg, str) or msg[0] != "{":
                             continue
                         p = json.loads(msg).get("payload") or {}
-                        if p.get("symbol") == "btc/usd" and "value" in p and "timestamp" in p:
+                        if p.get("symbol") == C.A["cl"] and "value" in p and "timestamp" in p:
                             self._add(p["timestamp"], p["value"])
                             last_btc = time.time()
-                        elif isinstance(p.get("data"), list) and p.get("symbol") == "btc/usd":
+                        elif isinstance(p.get("data"), list) and p.get("symbol") == C.A["cl"]:
                             for pt in p["data"]:
                                 self._add(pt["timestamp"], pt["value"])
             except Exception as e:  # noqa: BLE001 - reconnect on anything
@@ -172,7 +172,7 @@ class Spot:
             self.t_btc = now
             try:
                 last = next(reversed(self.btc)) if self.btc else int(now) - backlog_s
-                rows = self._klines("BTCUSDT", (last + 1) * 1000)
+                rows = self._klines(C.A["bn"], (last + 1) * 1000)
                 for k in rows:
                     ts = int(k[0]) // 1000
                     if ts >= int(now):  # still-open second: skip, it is incomplete
@@ -190,7 +190,7 @@ class Spot:
             self.t_eth = now
             try:
                 last = next(reversed(self.eth)) if self.eth else int(now) - backlog_s
-                for k in self._klines("ETHUSDT", (last + 1) * 1000):
+                for k in self._klines(C.A["other_bn"], (last + 1) * 1000):
                     ts = int(k[0]) // 1000
                     if ts >= int(now):
                         continue
@@ -205,7 +205,7 @@ class Spot:
         if now - self.t_book >= 2:
             self.t_book = now
             try:
-                d = http_json(f"{C.BINANCE[0]}/depth?symbol=BTCUSDT&limit=100", timeout=5)
+                d = http_json(f"{C.BINANCE[0]}/depth?symbol={C.A['bn']}&limit=100", timeout=5)
                 bids = [(float(p), float(q)) for p, q in d["bids"]]
                 asks = [(float(p), float(q)) for p, q in d["asks"]]
                 if bids and asks and bids[0][0] < asks[0][0]:
@@ -219,7 +219,7 @@ class Spot:
         if now - self.t_cb >= 5:
             self.t_cb = now
             try:
-                d = http_json(f"{C.COINBASE}/products/BTC-USD/ticker", timeout=5)
+                d = http_json(f"{C.COINBASE}/products/{C.A['cb']}/ticker", timeout=5)
                 self.coinbase = (now, float(d["price"]))
                 self.h.ok("coinbase")
             except (FetchError, KeyError, ValueError) as e:
@@ -231,21 +231,21 @@ class Spot:
     def _okx(self, now):
         ts = int(now)
         try:
-            d = http_json(f"{C.OKX}/public/funding-rate?instId=BTC-USDT-SWAP", timeout=6)["data"][0]
+            d = http_json(f"{C.OKX}/public/funding-rate?instId={C.A['okx']}", timeout=6)["data"][0]
             self._ext(ts, "funding", float(d["fundingRate"]))
             self._ext(ts, "premium", float(d.get("premium") or 0))
-            d = http_json(f"{C.OKX}/public/open-interest?instType=SWAP&instId=BTC-USDT-SWAP", timeout=6)["data"][0]
+            d = http_json(f"{C.OKX}/public/open-interest?instType=SWAP&instId={C.A['okx']}", timeout=6)["data"][0]
             self._ext(ts, "oi_usd", float(d["oiUsd"]))
-            d = http_json(f"{C.OKX}/rubik/stat/taker-volume?ccy=BTC&instType=CONTRACTS&period=5m", timeout=6)["data"]
+            d = http_json(f"{C.OKX}/rubik/stat/taker-volume?ccy={C.A['okx_ccy']}&instType=CONTRACTS&period=5m", timeout=6)["data"]
             if d:
                 self._ext(ts, "fut_taker_buy", float(d[0][1]))
                 self._ext(ts, "fut_taker_sell", float(d[0][2]))
-            d = http_json(f"{C.OKX}/public/liquidation-orders?instType=SWAP&uly=BTC-USDT&state=filled&limit=100", timeout=6)["data"]
+            d = http_json(f"{C.OKX}/public/liquidation-orders?instType=SWAP&uly={C.A['okx_uly']}&state=filled&limit=100", timeout=6)["data"]
             long_liq = short_liq = 0.0
             for grp in d:
                 for x in grp.get("details", []):
                     if int(x["ts"]) / 1000 >= now - 300:
-                        usd = float(x["sz"]) * 0.01 * float(x["bkPx"])  # BTC-USDT-SWAP contract = 0.01 BTC
+                        usd = float(x["sz"]) * C.A["ct"] * float(x["bkPx"])  # contract size: 0.01 BTC / 0.1 ETH
                         if x.get("posSide") == "long":
                             long_liq += usd
                         else:

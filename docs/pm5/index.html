@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BTC 5-Min AI · Polymarket paper trader</title>
+<title>5-Min AI · Polymarket paper trader</title>
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
 :root{--bg:#EDF0F3;--card:#fff;--line:#D8DEE6;--ink:#101B2D;--muted:#5A6779;--acc:#0F6B66;--acc2:#3557C4;--win:#11803F;--loss:#BF2F2F;--winbg:#DDF3E5;--lossbg:#F9E1E0;--hyp:#8A5A00;--hypbg:#FCEFD3;--soft:#F5F7F9}
@@ -51,7 +51,7 @@ svg text{fill:var(--muted);font-size:10px}
 </style></head><body>
 <div class="top"><div class="wrap">
   <div class="head">
-    <div><h1>BTC 5-Minute AI <span class="badge b-paper">Paper trading</span></h1>
+    <div><h1><span id="asset"></span> 5-Minute AI <span class="badge b-paper">Paper trading</span> <span id="sw" style="font-size:13px;text-transform:none;letter-spacing:0"></span></h1>
       <div class="sub" id="sub">Loading…</div></div>
     <div style="text-align:right"><div class="sub">Equity (paper USDC)</div><div class="big mono" id="eq">–</div></div>
   </div>
@@ -61,7 +61,9 @@ svg text{fill:var(--muted);font-size:10px}
 <script>
 const OWNER = location.hostname.endsWith('github.io') ? location.hostname.split('.')[0] : 'caelemiles';
 const REPO = (location.hostname.endsWith('github.io') && location.pathname.split('/')[1]) || 'crypto-desk';
-const BR = 'pm5-data';
+const ASSET = (new URLSearchParams(location.search).get('asset')||'btc').toLowerCase();
+const BR = ASSET==='eth' ? 'pm5-eth-data' : 'pm5-data';
+const SETTINGS_FILE = ASSET==='eth' ? 'settings-eth.json' : 'settings.json';
 const PAGES = ['Overview','Live AI','Market Data','Paper Trading','Learning Journal','Strategy Lab','Model Performance','Model History','Settings'];
 let page = (location.hash||'').slice(1).replace(/-/g,' ') || 'Overview'; if(!PAGES.includes(page)) page='Overview';
 let L = null, D = null, sha = null, jfilter = 'all', charts = [];
@@ -94,6 +96,9 @@ async function load(full){
 }
 function header(){
   const o = L.overview, h = L.health||{}, now = Date.now()/1000;
+  $('#asset').textContent = ASSET.toUpperCase();
+  const q = s => location.pathname + (s==='btc'?'':'?asset='+s) + location.hash;
+  $('#sw').innerHTML = ['btc','eth'].map(s=>s===ASSET?`<b>${s.toUpperCase()}</b>`:`<a href="${q(s)}">${s.toUpperCase()}</a>`).join(' · ');
   const age = now - L.generated;
   const healthy = age < 400 && (h.chainlink?.age_s ?? 999) < 30;
   $('#eq').innerHTML = `<span class="${cls(o.net_pnl)}">${usd(o.equity)}</span>`;
@@ -103,7 +108,7 @@ function header(){
 }
 function render(){
   if(!L) return;
-  if(!L.overview){ $('#sub').innerHTML = 'starting up · '+ago(L.generated); $('#main').innerHTML = `<div class="card" style="margin-top:14px"><h2>Starting up</h2><p>The AI is loading history and training its first models. Live data appears within about 15 minutes.</p><div class="feed">${feedHTML(L.activity, 40)}</div></div>`; return; }
+  if(!L.overview){ $('#asset').textContent = ASSET.toUpperCase(); $('#sub').innerHTML = 'starting up · '+ago(L.generated); $('#main').innerHTML = `<div class="card" style="margin-top:14px"><h2>Starting up</h2><p>The AI is loading history and training its first models. Live data appears within about 15 minutes.</p><div class="feed">${feedHTML(L.activity, 40)}</div></div>`; return; }
   header(); charts.forEach(c=>{try{c.remove()}catch(e){}}); charts=[];
   const f = {'Overview':pOverview,'Live AI':pLive,'Market Data':pMarket,'Paper Trading':pTrading,'Learning Journal':pJournal,'Strategy Lab':pLab,'Model Performance':pPerf,'Model History':pHistory,'Settings':pSettings}[page];
   $('#main').innerHTML = f(); afterRender();
@@ -134,7 +139,7 @@ function pOverview(){
   const o = L.overview;
   const k = [kpi('Equity', usd(o.equity), `start ${usd(o.start_balance,0)}`, cls(o.net_pnl)), kpi('Net P&L', sgn(o.net_pnl), pct(o.roi)+' ROI', cls(o.net_pnl)),
     kpi('Today', sgn(o.daily_pnl), '', cls(o.daily_pnl)), kpi('7 days', sgn(o.weekly_pnl), '', cls(o.weekly_pnl)), kpi('30 days', sgn(o.monthly_pnl), '', cls(o.monthly_pnl)),
-    kpi('Trades', o.trades, `${o.open_positions} open`), kpi('Win rate', pct(o.win_rate), 'profitable trades'), kpi('Avg win / loss', `${usd(o.avg_win)} / ${usd(o.avg_loss)}`),
+    kpi('Trades', o.trades, `${o.open_positions} open`), kpi('Win rate', pct(o.win_rate), `target ${pct((L.settings||{}).target_win_rate,0)}`, o.win_rate!=null && o.win_rate >= ((L.settings||{}).target_win_rate||0) ? 'pos' : ''), kpi('Avg win / loss', `${usd(o.avg_win)} / ${usd(o.avg_loss)}`),
     kpi('Max drawdown', pct(o.max_drawdown), 'from peak'), kpi('Brier score', num(o.brier,4), `${o.brier_n} markets · lower is better`), kpi('Fees paid', usd(o.fees))].join('');
   const dr = D?.journal?.daily?.slice(-1)[0];
   after.push(()=>equityChart('#eqc'));
@@ -171,7 +176,7 @@ function pLive(){
     <div class="card"><h2>Current analysis</h2>${marketCard()}
       <div class="kv" style="margin-top:12px">
         <div>Price to beat (Chainlink TWAP at open)</div><div class="mono">${m.open_ref?'$'+num(m.open_ref,2):'not published yet'}</div>
-        <div>Chainlink BTC/USD now</div><div class="mono">${m.cl_price?'$'+num(m.cl_price,2):'–'}</div>
+        <div>Chainlink ${esc(L.asset||'BTC')}/USD now</div><div class="mono">${m.cl_price?'$'+num(m.cl_price,2):'–'}</div>
         <div>Distance to price to beat</div><div class="mono ${cls(m.d_bp)}">${m.d_bp==null?'–':num(m.d_bp,2)+' bp'}</div>
         <div>Settlement TWAP already observed</div><div class="mono">${pct(m.twap_frac,0)}</div>
         <div>Fair-value z-score</div><div class="mono">${num(m.z,2)}</div>
@@ -205,11 +210,11 @@ function pMarket(){
   const outs = (md.outcomes||[]).map(o=>`<tr><td>${tsg(o.start)}–${tsg(o.start+300)}</td><td class="mono">${num(o.open,2)}</td><td class="mono">${num(o.close,2)}</td><td class="mono ${cls(o.close-o.open)}">${num(o.close-o.open,2)}</td><td>${side(o.outcome)}</td></tr>`);
   const e = md.ext||{};
   return `<div class="grid" style="margin-top:14px">
-   <div class="card"><h2>BTC/USDT · Binance · 1-minute candles (6h)</h2><div id="btc" class="chart"></div></div>
-   <div class="grid g2e"><div class="card"><h2>Chainlink BTC/USD · settlement reference family (30 min)</h2><div id="clc" class="chart" style="height:240px"></div></div>
+   <div class="card"><h2>${esc(L.asset||'BTC')}/USDT · Binance · 1-minute candles (6h)</h2><div id="btc" class="chart"></div></div>
+   <div class="grid g2e"><div class="card"><h2>Chainlink ${esc(L.asset||'BTC')}/USD · settlement reference (30 min)</h2><div id="clc" class="chart" style="height:240px"></div></div>
    <div class="card"><h2>Polymarket UP price · recent markets (30 min)</h2><div id="pmc" class="chart" style="height:240px"></div></div></div>
    <div class="grid g2"><div class="card"><h2>Recent results</h2>${table(['Window','Open (TWAP)','Close (TWAP)','Change','Result'], outs, 'No resolved markets yet.')}</div>
-   <div class="card"><h2>Derivatives (OKX BTC-USDT perpetual)</h2><div class="kv">
+   <div class="card"><h2>Derivatives (OKX ${esc(L.asset||'BTC')}-USDT perpetual)</h2><div class="kv">
      <div>Funding rate</div><div class="mono">${e.funding==null?'–':(e.funding*100).toFixed(4)+'%'}</div>
      <div>Premium</div><div class="mono">${e.premium==null?'–':(e.premium*100).toFixed(3)+'%'}</div>
      <div>Open interest</div><div class="mono">${usd(e.oi_usd,0)}</div>
@@ -219,7 +224,7 @@ function pMarket(){
   </div>`;
 }
 function tradeRow(t){
-  return `<tr><td>${tsg(t.opened,1)}</td><td>${esc(t.id)}</td><td class="l">${esc((t.title||t.slug||'').replace('Bitcoin Up or Down - ',''))}</td><td>${side(t.side)}</td><td class="mono">${num(t.shares,2)}</td><td class="mono">${num(t.entry_avg,3)}</td><td class="mono">${usd(t.cost)}</td><td class="mono">${usd(t.fee,3)}</td><td class="mono">${pct(t.prob,0)}</td><td>${t.status==='open'?'<span class="tag">open</span>':t.pnl>0?'<span class="tag w">won</span>':'<span class="tag l">lost</span>'}</td><td class="mono ${cls(t.pnl)}">${t.pnl==null?'–':sgn(t.pnl)}</td><td class="note">${esc(t.exit_reason||'')}${t.partial?' · partial fill':''}</td></tr>`;
+  return `<tr><td>${tsg(t.opened,1)}</td><td>${esc(t.id)}</td><td class="l">${esc((t.title||t.slug||'').replace(/^(Bitcoin|Ethereum) Up or Down - /,''))}</td><td>${side(t.side)}</td><td class="mono">${num(t.shares,2)}</td><td class="mono">${num(t.entry_avg,3)}</td><td class="mono">${usd(t.cost)}</td><td class="mono">${usd(t.fee,3)}</td><td class="mono">${pct(t.prob,0)}</td><td>${t.status==='open'?'<span class="tag">open</span>':t.pnl>0?'<span class="tag w">won</span>':'<span class="tag l">lost</span>'}</td><td class="mono ${cls(t.pnl)}">${t.pnl==null?'–':sgn(t.pnl)}</td><td class="note">${esc(t.exit_reason||'')}${t.partial?' · partial fill':''}</td></tr>`;
 }
 function pTrading(){
   const H = ['Opened','ID','_Market','Side','Shares','Avg price','Cost','Fee','Model','Status','P&L','Exit'];
@@ -254,7 +259,7 @@ function dailyHTML(d, short){
 }
 function tradeEntry(e){
   return `<div class="entry"><div class="meta"><b>Trade #${esc(e.trade)} · ${side(e.side)} · ${e.result==='Correct'?'<span class="tag w">Correct</span>':'<span class="tag l">Incorrect</span>'} <span class="mono ${cls(e.pnl)}">${sgn(e.pnl)}</span></b><span>${tsg(e.ts,1)} · ${esc(e.strategy)} / ${esc(e.model)}</span></div>
-   <div class="kv"><div>Market</div><div>${esc((e.title||e.slug||'').replace('Bitcoin Up or Down - ',''))}</div><div>Entry</div><div class="mono">$${num(e.entry_price,3)} × ${num(e.shares,2)} at ${e.t_entry}s · fee ${usd(e.fee,3)}</div>
+   <div class="kv"><div>Market</div><div>${esc((e.title||e.slug||'').replace(/^(Bitcoin|Ethereum) Up or Down - /,''))}</div><div>Entry</div><div class="mono">$${num(e.entry_price,3)} × ${num(e.shares,2)} at ${e.t_entry}s · fee ${usd(e.fee,3)}</div>
    <div>Estimated probability</div><div class="mono">${pct(e.prob,0)} (edge ${num(e.edge,3)})</div><div>Conditions</div><div>${esc(e.regime)} ${e.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>
    <p style="margin:8px 0 4px"><b>AI analysis:</b> ${esc(e.analysis)}</p>
    ${(e.facts||[]).length?`<ul>${e.facts.map(x=>`<li>${ev('measured')} ${esc(x)}</li>`).join('')}</ul>`:''}
@@ -268,7 +273,7 @@ function expEntry(e){
 function pJournal(){
   if(!D) return '<div class="empty">Loading…</div>';
   const J = D.journal;
-  const F = [['all','Everything'],['feed','Live activity'],['daily','Daily reports'],['trades','Trade analysis'],['exp','Strategy development'],['disc','Discoveries'],['models','Model history'],['integrity','Data integrity']];
+  const F = [['all','Everything'],['feed','Live activity'],['markets','Why each market moved'],['patterns','Patterns'],['daily','Daily reports'],['trades','Trade analysis'],['exp','Strategy development'],['disc','Discoveries'],['models','Model history'],['integrity','Data integrity']];
   const chips = F.map(([k,n])=>`<button class="chip ${jfilter===k?'on':''}" data-j="${k}">${n}</button>`).join('');
   after.push(()=>document.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>{jfilter=b.dataset.j; render();}));
   const disc = (J.discoveries||[]).slice().reverse().map(d=>`<div class="entry"><div class="meta"><b>${esc(d.title)}</b><span>${tsg(d.ts,1)} ${ev(d.evidence)}${d.updates?` · updated ${d.updates}×`:''}</span></div>${esc(d.body)}</div>`).join('');
@@ -281,12 +286,21 @@ function pJournal(){
     exp: `<div class="card"><h2>Strategy development journal</h2>${(J.experiments||[]).slice(-80).reverse().map(expEntry).join('')||'<div class="empty">No experiments yet.</div>'}</div>`,
     disc: `<div class="card"><h2>Discoveries</h2><p class="note">Green = measured from recorded outcomes. Amber = the AI's hypothesis, not yet proven.</p>${disc||'<div class="empty">Discoveries appear after enough markets have resolved.</div>'}</div>`,
     models: `<div class="card"><h2>Model history</h2>${mods||'<div class="empty">–</div>'}</div>`,
+    markets: `<div class="card"><h2>Why each market moved</h2><p class="note">Written every 5 minutes when a market settles. These are measured conditions, not proof of cause: the pattern search below tests which ones actually predict the result.</p>${(J.markets||[]).slice(-120).reverse().map(m=>`<div class="entry"><div class="meta"><b>${esc(m.title)} · ${side(m.outcome)}</b><span>${m.tags.map(t=>`<span class="tag">${esc(t.replace(/_/g,' '))}</span>`).join('')}</span></div><ul>${m.facts.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')||'<div class="empty">The first explanation appears when the next market settles.</div>'}</div>`,
+    patterns: patternsHTML(),
     integrity: `<div class="card"><h2>Data integrity log</h2>${table(['Time','Kind','_Detail'], integ, 'No data problems recorded.')}</div>`,
   };
   let body;
   if(jfilter==='all') body = `<div class="grid g2"><div class="grid">${sec.daily.replace('<div class="card">','<div class="card">')}${sec.trades}</div><div class="grid">${sec.feed}${sec.disc}${sec.exp}</div></div>`;
   else body = sec[jfilter];
   return `<div style="margin-top:14px"><div class="chips">${chips}</div>${body}</div>`;
+}
+function patternsHTML(){
+  const P = D.patterns;
+  if(!P) return '<div class="card"><h2>Patterns</h2><div class="empty">The first pattern search runs within the hour, once enough live markets are recorded.</div></div>';
+  const rows = (P.rows||[]).map(r=>`<tr><td class="l">${esc(r.label)}</td><td>${r.t}s</td><td class="mono">${r.n}</td><td class="mono">${pct(r.hit,0)}</td><td class="mono">${pct(r.mkt_hit,0)}</td><td class="mono ${cls(r.edge)}">${(r.edge*100).toFixed(1)}</td><td class="mono ${cls(r.lo)}">${r.lo==null?'–':(r.lo*100).toFixed(1)}</td><td>${r.status==='tradable'?'<span class="tag w">tradable</span>':`<span class="tag">${esc(r.status)}</span>`}</td></tr>`);
+  return `<div class="card"><h2>Pattern search</h2><p class="note">Last run ${tsg(P.ts,1)} on ${P.markets} live markets, ${P.tests} combinations tested. "Right" = how often the signal pointed to the winner. "Beats price" = how many points the result beat the market's own odds when the signal was strong. Only that can make money. A pattern needs a conservative estimate above 2 points to be traded, then it still has to win in shadow testing.</p>
+  ${table(['_Signal','When','Markets','Right','Market right','Beats price (pts)','Conservative','Status'], rows, 'No patterns tested yet.')}</div>`;
 }
 function pLab(){
   if(!D) return '<div class="empty">Loading…</div>';
@@ -303,10 +317,14 @@ function pLab(){
    <li><b>Replay test:</b> the change and the champion are replayed on recorded markets with one extra tick of slippage on every fill. Clearly worse ideas are rejected here.</li>
    <li><b>Shadow test:</b> it then trades virtually on live markets it has never seen, alongside the champion, on the same order books.</li>
    <li><b>Promotion:</b> only after ${S.min_shadow_markets_for_promotion||150}+ markets and ${S.min_shadow_trades_for_promotion||25}+ trades, if it beats the champion by a margin that survives a bootstrap test (corrected for how many ideas are being tested at once). The old champion is kept as a backup.</li>
+   <li><b>Win-rate target:</b> a strategy is only promoted if its shadow win rate is at least ${pct(S.target_win_rate,0)} as well as profitable.</li>
    <li><b>Rollback:</b> if the champion's live record turns clearly negative, the backup is restored automatically.</li></ol>
-   <p class="note">The AI never edits its own code and never deploys an untested model. Every change is a new numbered version.</p></div>
+   <p class="note">The AI never edits its own code and never deploys an untested model. Every change is a new numbered version.</p>
+   <h3 style="margin-top:12px">Why win rate alone is not enough</h3>
+   <p class="note">Each share pays $1 if right. To profit, the win rate must be higher than the price paid plus the fee. At an ${pct(S.target_win_rate,0)} win rate:</p>
+   ${table(['Price paid','Break-even win rate','Profit per share at target'], (D.win_rate_table||[]).map(r=>`<tr><td>${(r.price*100).toFixed(0)}c</td><td class="mono">${pct(r.breakeven,1)}</td><td class="mono ${cls(r.profit_at_target)}">${(r.profit_at_target*100).toFixed(1)}c</td></tr>`))}</div>
    ${champ?`<div class="card"><h2>Champion</h2><h3>${esc(champ.id)} · ${esc(champ.model_desc)}</h3><div class="note">${esc(champ.rules)}</div><div class="kv" style="margin-top:8px"><div>Shadow record</div><div class="mono">${champ.shadow.trades} trades · ${sgn(champ.shadow.pnl)} over ${champ.shadow.windows} markets (fixed $1,000 virtual bankroll)</div></div></div>`:''}
-   <div class="card"><h2>All strategies (${active.length} active)</h2>${table(['ID','Status','_Idea · rules · model','Origin','Markets','Trades','Win','Shadow P&L','Δ/market vs champ','Lower bound','Progress'], rows, 'No strategies yet.')}
+   <div class="card"><h2>All strategies (${active.length} active)</h2>${table(['ID','Status','_Idea · rules · model','Origin','Markets','Trades','Win rate','Shadow P&L','Δ/market vs champ','Lower bound','Progress'], rows, 'No strategies yet.')}
    <p class="note">Shadow P&L uses a fixed $1,000 virtual bankroll so every strategy is compared like for like. "Lower bound" is the conservative estimate of the advantage per market; it must be above $0 to promote.</p></div>
   </div>`;
 }
@@ -348,10 +366,10 @@ function pSettings(){
   const rows = Object.entries(S).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="mono">${esc(v)}</td></tr>`);
   return `<div class="grid g2" style="margin-top:14px">
    <div class="card"><h2>Current settings</h2>${table(['Setting','Value'], rows)}
-   <p class="note">To change them, edit <a href="https://github.com/${OWNER}/${REPO}/edit/main/pm5/settings.json" target="_blank" rel="noopener">pm5/settings.json</a> on GitHub and commit. The bot re-reads it about every 10 minutes. Change <b>reset_token</b> to any new value to restart the paper account at <b>starting_balance</b> (learning is kept).</p></div>
+   <p class="note">To change them, edit <a href="https://github.com/${OWNER}/${REPO}/edit/main/pm5/${SETTINGS_FILE}" target="_blank" rel="noopener">pm5/${SETTINGS_FILE}</a> on GitHub and commit. The bot re-reads it about every 10 minutes. Change <b>reset_token</b> to any new value to restart the paper account at <b>starting_balance</b> (learning is kept).</p></div>
    <div class="grid">
    <div class="card"><h2>Controls</h2><ul>
-     <li><b>Pause:</b> GitHub → Actions → "PM5 BTC 5-min paper AI" → ⋯ → Disable workflow.</li>
+     <li><b>Pause:</b> GitHub → Actions → "PM5 ${ASSET.toUpperCase()} 5-min paper AI" → ⋯ → Disable workflow.</li>
      <li><b>Resume:</b> same place → Enable workflow (it restarts within the hour, or press Run workflow).</li>
      <li><b>Memory:</b> stored on the <a href="https://github.com/${OWNER}/${REPO}/tree/${BR}" target="_blank" rel="noopener">${BR}</a> branch (state.json), so it survives restarts.</li></ul></div>
    <div class="card"><h2>Paper trading only</h2><p>This system has no live-trading mode and no switch to turn one on. It holds no keys and has no code that places orders.</p>
