@@ -35,6 +35,8 @@ from util import FetchError, sgt_day  # noqa: E402
 
 assert C.PAPER_ONLY, "This bot only paper-trades."
 
+EPOCH = "launch-1"  # changing this starts the AI from a clean memory (the historical database is kept)
+
 STOP = False
 
 
@@ -72,6 +74,10 @@ class Controller:
         self.pub = Publisher(C.PUBLISH_DIR, os.environ.get("GITHUB_REPOSITORY"), os.environ.get("PM5_TOKEN"))
         self.pub.init()
         state = self.pub.read("state.json", {}) or {}
+        if state and state.get("epoch") != EPOCH:
+            print(f"memory epoch {state.get('epoch')} != {EPOCH}: starting from a clean memory", flush=True)
+            state = {}
+        state["epoch"] = EPOCH
         self.db = DB(C.DB_PATH)
         self.j = Journal(state.get("journal"))
         self.h = Health()
