@@ -1,0 +1,19 @@
+name: PM5 API probe
+on:
+  push:
+    branches: [pm5-probe]
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install websockets==13.1
+      - run: cd probe && python probe.py
+      - run: |
+          git config user.name pm5-probe; git config user.email pm5-probe@users.noreply.github.com
+          git add probe/probe_out.json && git commit -m "probe result" && git push
