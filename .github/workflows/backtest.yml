@@ -1,0 +1,48 @@
+name: Crypto Desk backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many past days to test (max about 60)"
+        default: "30"
+      settings:
+        description: "Optional what-if settings, space separated, e.g. atrStop=2 rr=2 (leave empty for current settings)"
+        default: ""
+  schedule:
+    - cron: "17 1 * * 0"   # every Sunday 09:17 SGT, on the last 30 days
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backtest
+  cancel-in-progress: true
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run backtest
+        env:
+          DAYS: ${{ github.event.inputs.days || '30' }}
+          SETTINGS: ${{ github.event.inputs.settings || '' }}
+        run: |
+          if [ -n "$SETTINGS" ]; then
+            # shellcheck disable=SC2086
+            python backtest.py --days "$DAYS" --set $SETTINGS
+          else
+            python backtest.py --days "$DAYS"
+          fi
+      - name: Publish result to the dashboard
+        run: |
+          git config user.name "crypto-desk-bot"
+          git config user.email "crypto-desk-bot@users.noreply.github.com"
+          git add docs/backtest.json
+          git commit -m "Backtest result" || exit 0
+          for i in 1 2 3; do git pull --rebase && git push && break; sleep 5; done

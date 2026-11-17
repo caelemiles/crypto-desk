@@ -33,9 +33,10 @@ svg{width:100%;height:auto;display:block}
 <div class="card"><h2>Recent closed trades</h2><div class="scroll" id="closed"></div></div>
 <div class="card"><h2>What it sees now</h2><div class="scroll" id="scan"></div></div>
 <div class="card"><h2>Accuracy</h2><div id="acc"></div></div>
+<div class="card"><h2>Backtest: this engine on past prices</h2><div id="bt"><p class="note">No backtest yet. Run one from the Actions tab → "Crypto Desk backtest" → Run workflow (it also runs every Sunday).</p></div></div>
 <div class="card"><h2>Learning journal</h2><div class="chips" id="jchips"></div><div id="journal"></div></div>
 <div class="card"><h2>What it has learned</h2><div id="learn"></div></div>
-<p class="note">Paper money only. Trades are sized by risk (about 2% of equity at risk, more when confident and on a good run), 15-minute candles from Binance, runs about every 10 minutes on GitHub Actions. The engine learns from every candle on every coin (shadow long and short ideas) and only trades when its measured edge after fees is positive. Past results do not guarantee future ones.</p>
+<p class="note">Paper money only. Trades are sized by risk (about 2% of equity at risk, more when confident and on a good run), 15-minute candles from Binance, runs about every 10 minutes on GitHub Actions. Protections pause trading after 3 losses in a row or a 6% losing day. The engine learns from every candle on every coin (shadow long and short ideas) and only trades when its measured edge after fees is positive. Past results do not guarantee future ones.</p>
 </div>
 <script>
 const $=id=>document.getElementById(id);
@@ -75,10 +76,29 @@ async function load(){
   $("learn").innerHTML=`<p class="note" style="margin-top:0">${(L.samples||0).toLocaleString()} shadow trade ideas learned from. A trade needs a measured edge of +${f2(L.minEvR)}R after fees.</p>`+
     ((L.lessons||[]).length?`<ul>${L.lessons.slice().reverse().map(x=>`<li><span class="note">${esc(x.date||"")}</span> ${esc(x.text||"")}</li>`).join("")}</ul>`:"");
 }
-let JK="all";const JL={all:"All",trade:"Trades",daily:"Daily report",tuning:"Tuning",bench:"Benched",upgrade:"Upgrades"};
+async function loadBT(){
+  let B;try{const r=await fetch("backtest.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;B=await r.json()}catch(e){return}
+  const s=B.stats,d=t=>new Date(t).toLocaleDateString("en-SG",{timeZone:"Asia/Singapore",day:"numeric",month:"short"});
+  const pf=s.profitFactor,good=pf!=null&&pf>=1.2&&s.returnPct>0;
+  const k=[["Return",`<span class="${cl(s.returnPct)}">${sg(s.returnPct)}%</span>`,`${f2(s.startEq)} → ${f2(s.endEq)} USDT`],
+    ["Per day",`<span class="${cl(s.perDay)}">${sg(s.perDay)}</span>`,`USDT · ${s.tradesPerDay} trades/day`],
+    ["Win rate",s.winRate==null?"–":Math.round(s.winRate*100)+"%",`${s.trades} trades`],["Profit factor",pf==null?"–":f2(pf),"1.2+ is promising"],
+    ["Max drawdown",f2(s.maxDDPct)+"%","worst dip"],["BTC buy & hold",s.btcHoldPct==null?"–":sg(s.btcHoldPct)+"%","same period"]];
+  const tbl=(rows,h)=>rows&&rows.length?`<table><tr><th>${h}</th><th>Trades</th><th>Win</th><th>Avg R</th><th>P&L</th></tr>${rows.map(r=>`<tr><td>${esc(r.k)}</td><td>${r.n}</td><td>${Math.round(r.win*100)}%</td><td class="mono">${sg(r.avgR)}</td><td class="mono ${cl(r.pnl)}">${sg(r.pnl)}</td></tr>`).join("")}</table>`:"";
+  const set=B.shadow&&B.shadow.settings?Object.entries(B.shadow.settings).filter(x=>x[1]!=null):[];
+  $("bt").innerHTML=`<p class="note" style="margin-top:0">${d(B.from)} – ${d(B.to)} (${s.days} days) · ${B.coins.length} coins · fees and slippage included · run ${dt(B.generated)} SGT${B.synthetic?" · <b>synthetic test data</b>":""}${Object.keys(B.overrides||{}).length?" · what-if: "+esc(Object.entries(B.overrides).map(x=>x.join("=")).join(" ")):""}</p>
+  <div class="${good?"":"banner"}" style="${good?"padding:10px 12px;border-radius:8px;background:var(--winbg);color:var(--win);font-weight:600":""}">${esc(B.verdict)}</div>
+  <div class="kpis" style="margin:10px 0">${k.map(x=>`<div class="kpi"><div class="k">${x[0]}</div><div class="v mono">${x[1]}</div><div class="s">${x[2]}</div></div>`).join("")}</div>
+  ${curve(B.curve,s.startEq)}
+  <div class="scroll" style="margin-top:10px">${tbl(s.byExit,"How trades ended")}</div>
+  <div class="scroll" style="margin-top:10px">${tbl(s.byCoin,"Coin")}</div>
+  <div class="scroll" style="margin-top:10px">${tbl(s.byStrategy,"Setup")}</div>
+  ${set.length?`<p class="note">Stop/target settings measured on ${B.shadow.n} shadow ideas (avg net R, after fees): ${set.map(x=>`<b>${esc(x[0])}</b> ${sg(x[1])}R`).join(" · ")}. Average shadow idea: ${sg(B.shadow.avgR)}R.</p>`:""}`;
+}
+let JK="all";const JL={all:"All",trade:"Trades",daily:"Daily report",tuning:"Tuning",bench:"Benched",protect:"Protections",upgrade:"Upgrades"};
 function drawJ(){const J=(window._J||[]).slice().reverse();
   $("jchips").innerHTML=Object.entries(JL).map(([k,v])=>`<button class="chip ${k===JK?"on":""}" onclick="JK='${k}';drawJ()">${v}</button>`).join("");
   const S=J.filter(x=>JK==="all"||x.kind===JK).slice(0,60);
   $("journal").innerHTML=S.length?S.map(x=>`<div class="jr"><span class="note">${dt(x.t)}</span><span class="jk">${esc(JL[x.kind]||x.kind)}</span><span>${esc(x.text)}</span></div>`).join(""):'<p class="note">Nothing here yet. Entries appear as trades close, settings get tuned, and once a day as a report card.</p>'}
-load();setInterval(load,60000);
+load();loadBT();setInterval(load,60000);
 </script></body></html>

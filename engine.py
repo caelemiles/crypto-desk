@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Crypto Desk engine v5.1 (fixed 10 USDT stake, quick trades) - self-learning memecoin DAY TRADER (paper). Long AND short, USDT, 15m candles.
+Crypto Desk engine v7 (risk-sized trades, protections, backtester) - self-learning memecoin DAY TRADER (paper). Long AND short, USDT, 15m candles.
 v5 (15 Nov 2026): fixes the over-confident win chance (raw model said 97-100% on trades that lost):
 every entry now uses a CALIBRATED win chance and expected R measured from the bot's own resolved ideas
 in the same confidence band, and only trades with a real expected edge (+0.10R or more after fees).
@@ -631,6 +631,17 @@ def close_position(bot, model, pos, price, t, reason, closed):
     d0 = day_key(t); bot["daily"][d0] = round(bot["daily"].get(d0, 0) + pnl_rest, 2)
     pnl = pnl_rest + pos.get("partialPnl", 0)
     bot["recent"] = (bot.get("recent", []) + [round(pnl, 4)])[-30:]
+    # v7 protections bookkeeping: losing streak and per-coin cooldown after a loss
+    if pnl > 0:
+        bot["streak"] = 0
+    else:
+        bot["streak"] = bot.get("streak", 0) + 1
+        bot.setdefault("lastLoss", {})[pos["coin"]] = t
+        n = p.get("lossStreakN", 0)
+        if n and bot["streak"] >= n and bot.get("pauseUntil", 0) < t:
+            bot["pauseUntil"] = t + p.get("lossStreakPauseH", 2) * H
+            jot(model, t, "protect", f"{bot['streak']} losses in a row: paused new entries for {p.get('lossStreakPauseH', 2):g}h so it does not chase a bad patch.")
+            bot["streak"] = 0
     R = (pnl / pos["riskCash"]) if pos.get("riskCash") else (move / pos["risk0"] if pos["risk0"] > 0 else 0)
     if pnl > 0: bot["wins"] += 1; bot["grossWin"] += pnl
     else: bot["losses"] += 1; bot["grossLoss"] += -pnl
@@ -824,6 +835,7 @@ def place_orders(bot, model, hist, live, now, scan, scan_x, risk_mult, brake):
             sd = it["sides"][side]; sx = scan_x[(it["coin"], side)]
             if sd.get("evR", -1) < p.get("minEvR", 0.1) or sx["ens"] < p["minEdge"]: continue
             if is_blocked(bot, it["coin"], side): continue
+            if coin_block(bot, p, it, now): continue
             if sx["v"].get("emaTrend", 0) < -0.2 and sd.get("evR", 0) < p.get("strongEvR", 0.3): continue
             cands.append((sd["evR"], it, side, sd, sx))
     cands.sort(key=lambda c: -c[0])
@@ -852,6 +864,46 @@ def place_orders(bot, model, hist, live, now, scan, scan_x, risk_mult, brake):
         if it.get("decision") in (None, "No trade"):
             it["order"] = f"{'Buy' if side == 'long' else 'Sell'} breakout order at {fmt_px(trig)} for {p['orderHours']}h"
     return placed
+
+
+V7_PARAMS = {"lossStreakN": 3, "lossStreakPauseH": 2, "dailyLossPct": 0.06, "coinCooldownH": 1,
+             "minQuoteVol24": 1_000_000}
+
+
+def quote_vol24(bars):
+    """USDT traded in the last 24h (96 bars of 15m)."""
+    return sum(b[4] * b[5] for b in bars[-96:])
+
+
+def coin_block(bot, p, item, now):
+    """v7 per-coin protections. Returns a reason string or None."""
+    coin = item["coin"]
+    last = bot.get("lastLoss", {}).get(coin)
+    cd = p.get("coinCooldownH", 0)
+    if cd and last and now - last < cd * H:
+        return f"lost on {coin} {round((now - last) / 60000)} min ago, cooling off for {cd:g}h"
+    mq = p.get("minQuoteVol24", 0)
+    if mq and item.get("qv24") is not None and item["qv24"] < mq:
+        return f"too thin: {item['qv24'] / 1e6:.1f}M USDT traded in 24h (needs {mq / 1e6:.0f}M)"
+    return None
+
+
+def global_halt(bot, model, eq, now):
+    """v7 account-level protections: losing-streak pause and daily loss limit. Returns a reason or None."""
+    p = model["params"]
+    day = day_key(now)
+    ds = bot.get("dayStart")
+    if not ds or ds.get("day") != day:
+        ds = bot["dayStart"] = {"day": day, "eq": round(eq, 4), "hit": False}
+    if bot.get("pauseUntil", 0) > now:
+        return f"Losing-streak pause: no new entries until {dt.datetime.fromtimestamp((bot['pauseUntil'] + 8 * H) / 1000, dt.timezone.utc).strftime('%H:%M')} SGT"
+    lim = p.get("dailyLossPct", 0)
+    if lim and ds["eq"] > 0 and (eq - ds["eq"]) / ds["eq"] <= -lim:
+        if not ds.get("hit"):
+            ds["hit"] = True
+            jot(model, now, "protect", f"Daily loss limit: down {(ds['eq'] - eq):.2f} USDT ({(eq / ds['eq'] - 1) * 100:.1f}%) today, so no new entries until tomorrow (SGT).")
+        return f"Daily loss limit hit ({lim * 100:.0f}% of the day's starting equity): no new entries until tomorrow"
+    return None
 
 
 def patterns(model):
@@ -915,7 +967,18 @@ def run(state, new, now):
                "after fees (was +0.10R), coin+side pairs that keep losing are benched, max 4 trades open, and the trailing stop waits until +1.5R.")
         model.setdefault("lessons", []).append({"date": day_key(now), "text": txt}); model["lessons"] = model["lessons"][-60:]
         jot(model, now, "upgrade", txt)
-    model["engineVersion"] = 6
+    if not model.get("v7"):
+        # v7 (17 Nov): Freqtrade-style protections + backtester
+        model["params"].update(V7_PARAMS)
+        model["v7"] = True
+        txt = ("v7: protections added. After 3 losses in a row it pauses new entries for 2h; if the day is down 6% it stops "
+               "opening trades until tomorrow; after a loss on a coin it waits 1h before trading that coin again; coins with "
+               "under 1M USDT traded in 24h are skipped. A backtester now replays this exact engine on past candles.")
+        model.setdefault("lessons", []).append({"date": day_key(now), "text": txt}); model["lessons"] = model["lessons"][-60:]
+        jot(model, now, "upgrade", txt)
+    for k2, v2 in V7_PARAMS.items(): model["params"].setdefault(k2, v2)
+    model["params"].update(state.get("overrides") or {})  # backtester what-if settings
+    model["engineVersion"] = 7
     bot = state.get("bot") or default_bot(now=now)
     hist = state.get("history") or {}
     hist, live, warns = merge_history(hist, new, now)
@@ -948,7 +1011,7 @@ def run(state, new, now):
         x.pop("_ret24", None)
         c24 = bars[-96][4] if len(bars) >= 96 else bars[0][4]
         item = {"coin": coin, "price": price, "chg24": round((price / c24 - 1) * 100, 2),
-                "atrPct": round(a / price * 100, 2), "x": {k: round(v, 3) for k, v in x.items()}, "sides": {}}
+                "atrPct": round(a / price * 100, 2), "qv24": round(quote_vol24(bars)), "x": {k: round(v, 3) for k, v in x.items()}, "sides": {}}
         for side in SIDES:
             v, s = side_view(x, side)
             pr = predict(model, side, coin, v)
@@ -972,6 +1035,8 @@ def run(state, new, now):
     risk_mult, brake = 1.0, None
     if dd > 0.15: risk_mult, brake = 0.0, "Circuit breaker: drawdown above 15%, no new entries"
     elif dd > 0.08: risk_mult, brake = 0.5, "Drawdown above 8%: risk halved"
+    halt = global_halt(bot, model, eq, now)
+    if halt: risk_mult, brake = 0.0, halt
 
     risk_pct, risk_note = risk_now(bot, p)
     opened = []
@@ -990,6 +1055,8 @@ def run(state, new, now):
         if sx["v"].get("emaTrend", 0) < -0.2 and exp_R < p["strongEvR"]: reasons.append("against the 1h trend without a strong edge")
         if coin in just_closed: reasons.append("closed this run, cooling off")
         if is_blocked(bot, coin, side): reasons.append(f"{coin} {side}s are benched: they keep losing in live trading")
+        cb = coin_block(bot, p, it, now)
+        if cb: reasons.append(cb)
         if risk_mult == 0: reasons.append(brake)
         if len(bot["positions"]) >= p["maxOpen"]: reasons.append(f"already {p['maxOpen']} open positions")
         elif sum(1 for q in bot["positions"] if q["side"] == side) >= p.get("maxSameSide", 3):
@@ -1028,7 +1095,7 @@ def run(state, new, now):
     bot["curve"] = (bot["curve"] + [[now, round(eq, 2), live.get("BTC")]])[-1000:]
     bot["lastRunAt"] = now; bot["runs"] += 1; bot["brake"] = brake
     bot["dailyTarget"] = p.get("dailyTarget", 100.0); bot["today"] = bot["daily"].get(day_key(now), 0.0)
-    bot["riskNote"] = risk_note; bot["engineVersion"] = 6
+    bot["riskNote"] = risk_note; bot["engineVersion"] = 7
     bot["readiness"] = readiness(bot, now)
     for g in bot.get("goals", []):
         if eq >= g and str(g) not in bot["goalHits"]:
