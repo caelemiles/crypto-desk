@@ -102,7 +102,9 @@ function header(){
   document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{page=b.dataset.p; location.hash=page.replace(/ /g,'-'); render(); window.scrollTo(0,0);});
 }
 function render(){
-  if(!L) return; header(); charts.forEach(c=>{try{c.remove()}catch(e){}}); charts=[];
+  if(!L) return;
+  if(!L.overview){ $('#sub').innerHTML = 'starting up · '+ago(L.generated); $('#main').innerHTML = `<div class="card" style="margin-top:14px"><h2>Starting up</h2><p>The AI is loading history and training its first models. Live data appears within about 15 minutes.</p><div class="feed">${feedHTML(L.activity, 40)}</div></div>`; return; }
+  header(); charts.forEach(c=>{try{c.remove()}catch(e){}}); charts=[];
   const f = {'Overview':pOverview,'Live AI':pLive,'Market Data':pMarket,'Paper Trading':pTrading,'Learning Journal':pJournal,'Strategy Lab':pLab,'Model Performance':pPerf,'Model History':pHistory,'Settings':pSettings}[page];
   $('#main').innerHTML = f(); afterRender();
 }

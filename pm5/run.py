@@ -38,6 +38,27 @@ assert C.PAPER_ONLY, "This bot only paper-trades."
 STOP = False
 
 
+class Tee:
+    """Keeps the last lines of output so they can be published as log.txt (for remote diagnosis)."""
+
+    def __init__(self, stream, n=500):
+        self.stream, self.lines, self.buf = stream, collections.deque(maxlen=n), ""
+
+    def write(self, s):
+        self.stream.write(s)
+        self.buf += s
+        while "\n" in self.buf:
+            line, self.buf = self.buf.split("\n", 1)
+            self.lines.append(time.strftime("%H:%M:%S ", time.gmtime()) + line)
+        return len(s)
+
+    def flush(self):
+        self.stream.flush()
+
+
+LOG = Tee(sys.stdout)
+
+
 def _stop(*_):
     global STOP
     STOP = True
@@ -71,6 +92,10 @@ class Controller:
         self.loop_errors = 0
         self.run_id = os.environ.get("GITHUB_RUN_ID", "local")
         self.pending = set(int(x) for x in state.get("pending", []))
+        self.pub.write("live.json", {"generated": time.time(), "paper_only": True, "starting": True,
+                                     "run": {"id": self.run_id, "started": self.t0, "ends": self.deadline},
+                                     "activity": self.j.feed[-40:]})
+        self.pub.push("pm5 starting")
         self.official_wait = dict((int(k), v) for k, v in state.get("official_wait", {}).items())
 
     # ------------------------------------------------------------------ setup
@@ -90,14 +115,17 @@ class Controller:
                         kind="system")
         self.cl.start()
         now = time.time()
-        have = self.db.one("SELECT COUNT(*) FROM checkpoints c JOIN markets m ON m.slug=c.slug WHERE m.outcome IS NOT NULL")[0]
         try:
-            if have < 2000:
-                backfill.run(self.db, self.j, now - 4 * 86400, now)
+            old = backfill.oldest_history(self.db)
+            if old is None:
+                backfill.run(self.db, self.j, now - 3 * 86400, now, budget_s=480)
             else:
-                backfill.run(self.db, self.j, now - 8 * 3600, now)   # fill the gap since the last run
+                backfill.run(self.db, self.j, now - 8 * 3600, now, budget_s=180, label="Filling the gap of")
+                if old > now - backfill.MAX_DAYS * 86400:
+                    backfill.run(self.db, self.j, old - 86400, old, budget_s=240, label="Extending history with")
         except Exception as e:  # noqa: BLE001
-            self.j.integrity_event("backfill", f"backfill failed: {e}")
+            self.j.integrity_event("backfill", f"backfill failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
         if not self.brain.s.get("champion"):
             rows = self.db.labelled_checkpoints(F.SCHEMA)
             self.brain.bootstrap(rows)
@@ -472,6 +500,8 @@ class Controller:
                 "activity": self.j.feed[-80:], "open": acct.positions,
                 "recent_trades": acct.closed[-10:], "settings": self.settings}
         self.pub.write("live.json", live)
+        with open(os.path.join(self.pub.dir, "log.txt"), "w") as fh:
+            fh.write("\n".join(LOG.lines) + "\n")
         if full:
             self.t["pub_full"] = now
             data = live | {
@@ -502,6 +532,8 @@ class Controller:
 
 
 def main():
+    sys.stdout = LOG
+    sys.stderr = LOG
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
     minutes = float(os.environ.get("PM5_MINUTES", "340"))

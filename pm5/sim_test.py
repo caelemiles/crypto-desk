@@ -138,7 +138,8 @@ def fake_klines(sym, start, end):
     return out
 
 
-backfill._klines = fake_klines
+backfill._klines = lambda a, b: fake_klines('BTCUSDT', a, b)
+backfill._outcomes = lambda starts: {x: ('UP' if twap(x + 300) >= twap(x) else 'DOWN') for x in starts if x + 300 < Clock.t}
 
 
 class FakeCL:

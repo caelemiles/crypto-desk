@@ -63,18 +63,46 @@ class ChainlinkStream(threading.Thread):
                 self.new_rows.append((ts, v))
             while len(self.prices) > 4 * 3600:
                 self.prices.popitem(last=False)
-        self.health.ok("chainlink")
+        if time.time() - ts < 10:  # health means fresh data, not just traffic
+            self.health.ok("chainlink")
 
-    def run(self):
-        from websockets.sync.client import connect
+    def _snapshot(self, connect):
+        """Short filtered connection: returns the last ~60s of BTC/USD values (fills gaps after reconnects)."""
         sub = {"action": "subscribe", "subscriptions": [
             {"topic": "crypto_prices_chainlink", "type": "*", "filters": json.dumps({"symbol": "btc/usd"})}]}
+        with connect(C.RTDS_WS, open_timeout=10, close_timeout=2, max_size=2 ** 22) as ws:
+            ws.send(json.dumps(sub))
+            end = time.time() + 5
+            while time.time() < end:
+                try:
+                    msg = ws.recv(timeout=2)
+                except TimeoutError:
+                    break
+                if isinstance(msg, str) and msg.startswith("{"):
+                    p = json.loads(msg).get("payload") or {}
+                    if isinstance(p.get("data"), list):
+                        for pt in p["data"]:
+                            self._add(pt["timestamp"], pt["value"])
+                        return len(p["data"])
+        return 0
+
+    def run(self):
+        # Measured on GitHub's runners: a symbol-filtered subscription only returns a snapshot, while an
+        # unfiltered one streams every symbol about once a second. So: stream unfiltered and keep btc/usd,
+        # and take a filtered snapshot after every (re)connect so short outages leave no gap.
+        from websockets.sync.client import connect
+        sub = {"action": "subscribe", "subscriptions": [{"topic": "crypto_prices_chainlink", "type": "*", "filters": ""}]}
         backoff = 1
         while not self.stop:
             try:
+                try:
+                    self._snapshot(connect)
+                except Exception as e:  # noqa: BLE001
+                    self.health.bad("chainlink_snapshot", e)
                 with connect(C.RTDS_WS, open_timeout=10, close_timeout=2, max_size=2 ** 22) as ws:
                     ws.send(json.dumps(sub))
                     last_ping = time.time()
+                    last_btc = time.time()
                     backoff = 1
                     while not self.stop:
                         if time.time() - last_ping > 5:
@@ -83,18 +111,18 @@ class ChainlinkStream(threading.Thread):
                         try:
                             msg = ws.recv(timeout=3)
                         except TimeoutError:
-                            if self.health.age("chainlink") > 20:
-                                raise ConnectionError("chainlink stream silent for 20s")
-                            continue
+                            msg = None
+                        if time.time() - last_btc > 15:
+                            raise ConnectionError("no BTC/USD update for 15s")
                         if not msg or not isinstance(msg, str) or msg[0] != "{":
                             continue
-                        d = json.loads(msg)
-                        p = d.get("payload") or {}
-                        if isinstance(p.get("data"), list):  # snapshot
+                        p = json.loads(msg).get("payload") or {}
+                        if p.get("symbol") == "btc/usd" and "value" in p and "timestamp" in p:
+                            self._add(p["timestamp"], p["value"])
+                            last_btc = time.time()
+                        elif isinstance(p.get("data"), list) and p.get("symbol") == "btc/usd":
                             for pt in p["data"]:
                                 self._add(pt["timestamp"], pt["value"])
-                        elif "value" in p and "timestamp" in p:
-                            self._add(p["timestamp"], p["value"])
             except Exception as e:  # noqa: BLE001 - reconnect on anything
                 self.health.bad("chainlink", e)
                 self.reconnects += 1

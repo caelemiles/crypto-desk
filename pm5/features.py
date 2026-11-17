@@ -97,9 +97,21 @@ def build(ts, start, end, twap_secs, open_ref, cl, bn, eth, ext, book, prev_outc
     if cl_now_ts is not None:
         ref_series, price = cl, cl[cl_now_ts]
         f[IDX["cl_age"]] = ts - cl_now_ts
-    else:
+    elif backfill:
         ref_series, price = bn, _price_at(bn, ts)
-        f[IDX["cl_age"]] = None if not backfill else 0.0
+        f[IDX["cl_age"]] = 0.0
+    else:
+        # live, Chainlink momentarily missing: use Binance scaled by the recent Chainlink/Binance ratio,
+        # never raw Binance (USDT trades ~0.1% away from USD, which would bias every probability)
+        ratios = [cl[s] / bn[s][3] for s in range(int(ts) - 900, int(ts)) if cl and s in cl and s in bn and bn[s][3] > 0]
+        if len(ratios) >= 30:
+            ratios.sort()
+            basis = ratios[len(ratios) // 2]
+            ref_series = {s: bn[s][3] * basis for s in range(int(ts) - 301, int(ts) + 1) if s in bn}
+            price = _price_at(ref_series, ts)
+        else:
+            ref_series, price = {}, None
+        f[IDX["cl_age"]] = 99.0
     cl300 = _closes(ref_series, ts, 300)
     vcl = _std(_rets(cl300)) if cl_now_ts is not None else None
     f[IDX["vol_cl_300"]] = vcl

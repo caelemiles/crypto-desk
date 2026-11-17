@@ -34,3 +34,36 @@ The bot's working memory lives in the GitHub Actions cache so the repository doe
 - **Practise now:** Actions tab → "Crypto Desk practice session" → Run workflow.
 - **Backtest:** Actions tab → "Crypto Desk backtest" → Run workflow. Pick the number of days, and optionally try other settings, e.g. `atrStop=2 rr=2` or `riskPct=0.01`. The result appears on the dashboard within about 10 minutes.
 - **Start over:** delete the `backup/` folder and clear the caches (Actions → Caches).
+
+---
+
+# PM5 – Polymarket BTC 5-minute AI (paper trading)
+
+A second, separate bot that watches every Polymarket "Bitcoin Up or Down" 5-minute market around the clock,
+forecasts each one, paper-trades it against the real order book, and keeps improving itself under strict testing.
+**Paper money only:** no wallet, no keys, no code that places orders.
+
+**Dashboard:** `https://caelemiles.github.io/crypto-desk/pm5/`
+
+## How it works
+
+| Component | File | What it does |
+|---|---|---|
+| Central controller | `pm5/run.py` | one loop, once a second; coordinates everything below; saves and hands over every ~5h40m |
+| Market Intelligence | `pm5/market.py` | finds the live market by its exact window, reads both order books, tracks open → close → resolution, refuses wrong or expired windows |
+| Data Intelligence | `pm5/feeds.py` | Chainlink BTC/USD (the settlement reference) via Polymarket's live socket, Binance 1-second candles + order book, ETH, Coinbase, OKX funding / open interest / liquidations / taker flow |
+| Prediction Engine | `pm5/features.py`, `pm5/models.py` | TWAP-aware fair value (these markets settle on Chainlink's **60-second TWAP**), logistic models, blends, LightGBM; every model is a frozen version |
+| Strategy Development | `pm5/strategy.py` | rules for when, which side, how much (fractional Kelly), and early exits |
+| Trading Engine | `pm5/paper.py` | walks the real book level by level, partial fills, 5-share minimum, Polymarket's crypto taker fee (0.07 × p × (1−p) per share), settlement at $1/$0, early exits at the bid |
+| Learning Engine | `pm5/learning.py` | evaluates every market, analyses every trade, proposes experiments, replay-tests them, shadow-tests them live, promotes only significant winners, rolls back on deterioration |
+| Learning Journal | `pm5/journal.py`, `pm5/report.py` | live activity feed, trade analyses, daily reports, strategy experiments, discoveries (measured vs hypothesis), model history |
+
+History (Chainlink, Binance, order-book snapshots, every 5-second checkpoint, results) is stored in SQLite (Actions cache).
+The AI's memory (models, strategies, paper account, journal) is on the `pm5-data` branch, updated every few minutes.
+
+## Controls
+
+- **Settings:** edit `pm5/settings.json` (starting balance, risk limits, test thresholds). Re-read every ~10 minutes.
+  Change `reset_token` to restart the paper account; learning is kept.
+- **Pause / resume:** Actions → "PM5 BTC 5-min paper AI" → Disable / Enable workflow.
+- **Offline test:** `python pm5/sim_test.py 6` runs the real controller for 6 simulated hours on a synthetic market.
