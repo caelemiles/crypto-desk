@@ -58,6 +58,9 @@ def _price_at(series, s, max_back=5):
     return None
 
 
+REF_NOISE_BP = 2.0  # measured: the AI's own TWAP differs from Polymarket's by ~1-3 bp, so never be 99% sure inside that
+
+
 def fair_prob(price, open_ref, sigma, ts, end, twap_secs, twap_obs_avg, twap_obs_n):
     """P(TWAP_close >= open) for a driftless random walk with per-second log vol sigma."""
     if not price or not open_ref or not sigma or sigma <= 0:
@@ -77,6 +80,7 @@ def fair_prob(price, open_ref, sigma, ts, end, twap_secs, twap_obs_avg, twap_obs
             # unobserved seconds inside the TWAP window but already in the past are filled with the current price
             mean = (k * obs + (L - k) * price) / L
             var = (price * sigma) ** 2 * (r ** 3) / (3.0 * L * L)
+    var += (price * REF_NOISE_BP * 1e-4) ** 2
     sd = math.sqrt(max(var, 1e-12))
     z = (mean - open_ref) / sd
     z = max(min(z, 12.0), -12.0)

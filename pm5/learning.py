@@ -600,6 +600,8 @@ class Brain:
     def step(self, now, live_rows_fn):
         """Every few minutes: test challengers, promote, retire, roll back, propose new experiments."""
         self._check_rollback(now)
+        self._check_stand_down(now)
+        self._seed_v2()
         champ = self.champion
         if not champ:
             return
@@ -621,7 +623,8 @@ class Brain:
             ll = self._paired_logloss(self.strats[sid].model_id, champ.model_id, starts)
             c["test"]["logloss"] = ll
             enough = len(diffs) >= self.cfg["min_shadow_markets_for_promotion"] and led["trades"] >= self.cfg["min_shadow_trades_for_promotion"]
-            model_ok = ll is None or ll["mean"] >= -0.002 or self.strats[sid].model_id == champ.model_id
+            observing = bool(champ.rules.get("observe"))
+            model_ok = observing or ll is None or ll["mean"] >= -0.002 or self.strats[sid].model_id == champ.model_id
             if enough and lo is not None and lo > 0 and c["test"]["pnl"] > 0 and model_ok:
                 self._promote(sid, c, now)
                 return
@@ -678,6 +681,77 @@ class Brain:
                            "result": f"{reason}. Shadow P&L {money(t.get('pnl', 0))} vs champion {money(t.get('champ_pnl', 0))} "
                                      f"over {t.get('windows', 0)} markets.", "evidence": "measured"})
 
+    def _base_strategy(self):
+        """The strategy whose rules new ideas start from: the champion, or (while standing aside) the best trader."""
+        champ = self.champion
+        if champ and not champ.rules.get("observe"):
+            return champ
+        cands = [(sum(self.s["ledgers"][s.id]["pnl"].values()), s) for s in self.active() if not s.rules.get("observe")]
+        return max(cands, key=lambda x: x[0])[1] if cands else None
+
+    def _market_model(self):
+        return next((m for m in self.models.values() if m.kind == "market"), None)
+
+    def _check_stand_down(self, now):
+        """If the champion trades on a model that is measurably LESS accurate than the market price, every 'edge'
+        it sees is really its own error. Stand aside (no trades) until a challenger proves a profit."""
+        champ = self.champion
+        mk = self._market_model()
+        if not champ or champ.rules.get("observe") or not mk or champ.model_id == mk.id:
+            return
+        hist = self.s["champion_history"]
+        since = MK.window_start(hist[-1]["since"]) if hist else 0
+        starts = [int(k) for k, w in self.s["windows"].items() if int(k) >= since and w.get("outcome")]
+        ll = self._paired_logloss(champ.model_id, mk.id, starts)
+        if not ll or ll["n"] < 60 or ll["hi"] is None or ll["hi"] >= 0:
+            return
+        obs = next((self.strats[k] for k, c in self.s["challengers"].items()
+                    if self.strats.get(k) and self.strats[k].rules.get("observe")), None)
+        if obs is None:
+            obs = self.add_strategy(mk.id, {"observe": True}, note="Stand aside: trade nothing until an edge is proven.",
+                                    origin="safety", status="shadow")
+        self.s["challengers"][champ.id]["status"] = "shadow"     # keeps running virtually; it can earn its way back
+        self.s["challengers"][champ.id]["born_window"] = MK.window_start(now)
+        self.s["ledgers"][champ.id]["n_windows"] = 0
+        self.s["challengers"][obs.id]["status"] = "champion"
+        self.s["champion"] = obs.id
+        if hist:
+            hist[-1]["until"] = now
+        hist.append({"sid": obs.id, "model": mk.id, "since": now, "version": len(hist) + 1,
+                     "reason": "stood aside: the market price was more accurate than the champion's model"})
+        body = (f"Over {ll['n']} markets the market price was more accurate than {champ.id}'s model "
+                f"(its log loss was {-ll['mean']:.3f} worse per market, and still worse at the edge of the 95% confidence range). "
+                f"Trading against a more accurate market loses money, so real paper trades stop. All strategies keep "
+                f"trading virtually; the first one to show a statistically significant profit takes over.")
+        self.j.model_event(f"Version {len(hist)}: standing aside ({obs.id})", body, {"from": champ.id})
+        self.j.discovery("The market beats the fair-value model", body, "measured", {"n": ll["n"], "gap": ll["mean"]},
+                         key="stand_down")
+        self.j.activity(f"Safety: {champ.id} stood down (market more accurate). No real paper trades until an edge is proven",
+                        kind="risk")
+
+    def _seed_v2(self):
+        """Hypotheses added after the first day's results (each still has to prove itself in shadow)."""
+        if self.s["last"].get("seed_v2"):
+            return
+        self.s["last"]["seed_v2"] = time.time()
+        fair = next((s.model_id for s in self.strats.values() if self.models.get(s.model_id) and
+                     self.models[s.model_id].kind == "fair"), None)
+        if not fair:
+            return
+        ideas = [
+            ({"t_min": 240, "t_max": 292, "min_prob": 0.97, "min_price": 0.5, "max_price": 0.99, "min_edge": 0.01},
+             "Near-certain finishes: in the last minute most of the TWAP is locked in and fees are tiny near $1. "
+             "Hypothesis: buying the almost-decided side at 0.90-0.99 still pays after fees."),
+            ({"t_min": 200, "t_max": 285, "min_prob": 0.9, "min_price": 0.5, "max_price": 0.96, "min_edge": 0.02},
+             "Late, high-confidence entries with a modest edge. Hypothesis: the crowd under-prices the leader late on."),
+        ]
+        for rules, why in ideas:
+            st = self.add_strategy(fair, rules, parent=None, note=why.split(":")[0], origin="day-1 review", hypothesis=why)
+            self.j.experiment({"exp": f"E{self._nid('exp'):03d}", "strategy": st.id, "stage": "testing",
+                               "title": f"{st.id}: {why.split(':')[0]}", "goal": why, "change": st.describe(),
+                               "test": "Shadow-traded on live markets; must show a significant profit to take over.",
+                               "evidence": "hypothesis", "origin": "day-1 review"})
+
     def _check_rollback(self, now):
         champ = self.champion
         if not champ:
@@ -717,7 +791,9 @@ class Brain:
         room = self.cfg["max_challengers"] - n_active
         if room <= 0:
             return
-        champ = self.champion
+        champ = self._base_strategy()
+        if not champ:
+            return
         ideas = self._ideas_from_errors()
         made = 0
         rows = None
@@ -818,8 +894,16 @@ class Brain:
             self.j.activity(f"Model research skipped: {len(all_rows)} labelled checkpoints (need 3,000)", kind="research")
             return
         champ = self.champion
+        mk = self._market_model()
         starts = sorted({r[1] for r in all_rows})
-        cut = starts[int(len(starts) * 0.8)] if len(starts) < 288 * 5 else max(starts) - 86400
+        live_starts = sorted({r[1] for r in all_rows if F.get(r[3], "pm_mid_up") is not None})
+        if len(live_starts) >= 80 and mk:
+            # the real benchmark is the market price: judge every candidate on recent live markets against it
+            cut = live_starts[int(len(live_starts) * 0.6)]
+            bench_model, bench_name = mk, "the market price"
+        else:
+            cut = starts[int(len(starts) * 0.8)] if len(starts) < 288 * 5 else max(starts) - 86400
+            bench_model, bench_name = self.models[champ.model_id], "the champion's model"
         train = [(f, y) for _, s, _, f, _, y in all_rows if s < cut]
         hold = [r for r in all_rows if r[1] >= cut]
         live_train = [(f, y) for f, y in train if F.get(f, "pm_mid_up") is not None]
@@ -832,17 +916,18 @@ class Brain:
                 p = M.fit_logit(train, fset, l2=l2)
                 if p:
                     cands.append(("logit", p, f"logistic [{fset}] L2={l2}"))
-        if len(live_train) >= 3000:
+        if len(live_train) >= 1500:
             p = M.fit_blend(live_train)
             if p:
                 cands.append(("blend", p, "fair value + market blend"))
-            p = M.fit_logit(live_train, "core", l2=10.0, use_market=True)
-            if p:
-                cands.append(("logit", p, "logistic [core + market]"))
+            for fset, l2 in (("core", 10.0), ("core", 100.0), ("flow", 30.0), ("flow", 300.0)):
+                p = M.fit_logit(live_train, fset, l2=l2, use_market=True)
+                if p:
+                    cands.append(("logit", p, f"logistic [{fset} + market] L2={l2}"))
         g = M.fit_gbm(train, "all")
         if g:
             cands.append(("gbm", g, "LightGBM [all features]"))
-        champ_model = self.models[champ.model_id]
+        champ_model = bench_model
         by_win = collections.defaultdict(list)
         for _, s, t, f, _, y in hold:
             if t in STD_T:
@@ -870,11 +955,11 @@ class Brain:
                     "improvement": round(r[0], 4), "lower_bound": None if r[1] is None else round(r[1], 4), "markets": r[7]}
                    for r in results]
         self.s["last"]["research_result"] = {"ts": now, "train_rows": len(train), "holdout_markets": len(by_win),
-                                             "candidates": summary}
+                                             "candidates": summary, "benchmark": bench_name}
         winners = [r for r in results if r[1] is not None and r[1] > 0][:2]
         if not winners:
             self.j.experiment({"exp": f"E{self._nid('exp'):03d}", "stage": "rejected in validation",
-                               "title": "Model research: no candidate beat the champion's model",
+                               "title": f"Model research: no candidate beat {bench_name}",
                                "goal": "Find a more accurate probability model.",
                                "change": f"Trained {len(results)} candidate models on {len(train):,} checkpoints.",
                                "test": f"Scored on the most recent {len(by_win)} unseen markets (log loss, paired, bootstrap).",
@@ -891,12 +976,13 @@ class Brain:
             if old:
                 self._retire(old[0][1], self.s["challengers"][old[0][1]], "made room for a validated model candidate")
                 room = 1
+        base = self._base_strategy() or champ
         for mean, lo, kind, params, note, lx, lc, n in winners[:max(room, 0)]:
             m = self.add_model(kind, params, parent=champ.model_id, note=f"{note}; holdout log loss {lx:.4f} vs {lc:.4f} "
                                                                          f"on {n} unseen markets", trained_until=cut)
-            why = (f"Measured on {n} unseen markets: log loss {lx:.4f} vs champion model {lc:.4f} "
+            why = (f"Measured on {n} unseen markets: log loss {lx:.4f} vs {bench_name} {lc:.4f} "
                    f"(improvement {mean:+.4f}, lower bound {lo:+.4f}). Hypothesis: better probabilities -> better trades.")
-            self._launch(champ, m.id, dict(champ.rules), why, "model research", rows_after, f"new model {m.id}: {note}")
+            self._launch(base, m.id, dict(base.rules), why, "model research", rows_after, f"new model {m.id}: {note}")
         self._sync()
 
     # ------------------------------------------------------------------ persistence

@@ -24,12 +24,12 @@ DEFAULT_RULES = {
 }
 
 MUTABLE = {
-    "t_min": [10, 20, 30, 45, 60, 90, 120, 150, 180],
+    "t_min": [10, 20, 30, 45, 60, 90, 120, 150, 180, 220, 240, 260],
     "t_max": [120, 180, 220, 250, 270, 285, 292],
-    "min_edge": [0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10],
-    "min_prob": [0.5, 0.55, 0.6, 0.65, 0.7, 0.8],
+    "min_edge": [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10],
+    "min_prob": [0.5, 0.55, 0.6, 0.65, 0.7, 0.8, 0.9, 0.97],
     "min_price": [0.03, 0.05, 0.07, 0.1, 0.15],
-    "max_price": [0.8, 0.85, 0.9, 0.93, 0.96],
+    "max_price": [0.8, 0.85, 0.9, 0.93, 0.96, 0.98, 0.99],
     "vol_ratio_max": [None, 1.5, 2.0, 3.0],
     "min_depth_usd": [10, 20, 50, 100],
     "size_mult": [0.5, 0.75, 1.0, 1.25],
@@ -55,6 +55,8 @@ class Strategy:
 
     def describe(self):
         r = self.rules
+        if r.get("observe"):
+            return "stand aside: no trades until a strategy proves a real edge"
         s = (f"enter {r['t_min']}-{r['t_max']}s, edge >= {r['min_edge']:.2f}, prob >= {r['min_prob']:.2f}, "
              f"price {r['min_price']:.2f}-{r['max_price']:.2f}")
         if r["vol_ratio_max"]:
@@ -67,6 +69,8 @@ class Strategy:
     def decide(self, f, p_up, book, mkt, bankroll, settings):
         """Return (order or None, reason). Order: side, prob, limit, budget, edge, cost_per_share."""
         r = self.rules
+        if r.get("observe"):
+            return None, "standing aside: no strategy has a proven edge over the market yet"
         t = F.get(f, "t")
         if p_up is None:
             return None, "model has no view"
