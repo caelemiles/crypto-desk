@@ -317,7 +317,8 @@ function pLab(){
    <li><b>Replay test:</b> the change and the champion are replayed on recorded markets with one extra tick of slippage on every fill. Clearly worse ideas are rejected here.</li>
    <li><b>Shadow test:</b> it then trades virtually on live markets it has never seen, alongside the champion, on the same order books.</li>
    <li><b>Promotion:</b> only after ${S.min_shadow_markets_for_promotion||150}+ markets and ${S.min_shadow_trades_for_promotion||25}+ trades, if it beats the champion by a margin that survives a bootstrap test (corrected for how many ideas are being tested at once). The old champion is kept as a backup.</li>
-   <li><b>Win-rate target:</b> a strategy is only promoted if its shadow win rate is at least ${pct(S.target_win_rate,0)} as well as profitable.</li>
+   <li><b>Win rate:</b> a strategy must win at least 2 points more often than its break-even rate (the average price it pays, fees included). Among qualifying strategies, ones at or above the ${pct(S.target_win_rate,0)} goal are preferred.</li>
+   <li><b>Probation:</b> while the bot is standing aside, a strategy with 100+ profitable shadow trades that passes a 90% confidence check may trade the real paper account at half stakes. It goes to full size after a strict live check, or is stood down if it turns negative.</li>
    <li><b>Rollback:</b> if the champion's live record turns clearly negative, the backup is restored automatically.</li></ol>
    <p class="note">The AI never edits its own code and never deploys an untested model. Every change is a new numbered version.</p>
    <h3 style="margin-top:12px">Why win rate alone is not enough</h3>
