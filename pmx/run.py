@@ -26,7 +26,7 @@ from publish import Publisher  # noqa: E402  (pm5/publish.py)
 from wdesk import WeatherDesk  # noqa: E402
 
 assert K.PAPER_ONLY
-EPOCH = "pmx-1"
+EPOCH = "pmx-2"
 STOP = False
 EVERY = {"arb": 60, "weather": 300, "wdiscover": 1800, "slugs": 3 * 3600, "resolve": 600, "learn": 3 * 3600,
          "pub_live": 120, "pub_full": 600, "settings": 600}
