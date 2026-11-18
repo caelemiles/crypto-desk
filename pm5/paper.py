@@ -37,6 +37,25 @@ def walk_buy(asks, budget, limit, take_pct, rate, exp):
     return {"fills": fills, "shares": round(shares, 2), "cost": round(spent, 5), "fee": round(fees, 5), "avg": avg}
 
 
+def maker_fill(book_side, price, budget, shares_cap=None):
+    """Resting limit BUY at `price` (a maker order: Polymarket charges makers no fee).
+
+    Conservative fill rule: filled only once the market has traded THROUGH our level, i.e. the best bid has
+    dropped below our price (every bid at our price, ours included, was taken) or sellers now ask at or
+    below it. That also means maker fills come exactly when the price moves against us, as in real life.
+    """
+    bids, asks = book_side["bids"], book_side["asks"]
+    best_bid = bids[0][0] if bids else 0.0
+    best_ask = asks[0][0] if asks else 1.0
+    if not (best_bid < price - 1e-9 or best_ask <= price + 1e-9):
+        return None
+    shares = int((budget / price) * 100) / 100.0
+    if shares_cap:
+        shares = min(shares, shares_cap)
+    return {"fills": [(price, shares)], "shares": shares, "cost": round(shares * price, 5), "fee": 0.0, "avg": price,
+            "maker": True}
+
+
 def walk_sell(bids, shares, limit, take_pct, rate, exp):
     fills, sold, gross, fees = [], 0.0, 0.0, 0.0
     for price, size in bids:

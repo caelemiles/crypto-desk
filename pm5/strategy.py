@@ -21,6 +21,8 @@ DEFAULT_RULES = {
     "size_mult": 1.0,     # scales the Kelly stake
     "exit": "hold",       # hold to settlement, or "edge_exit": sell at the bid when the edge has gone
     "exit_buffer": 0.03,
+    "order": "taker",     # "taker" crosses the spread and pays the fee; "maker" rests a limit bid (no fee)
+    "maker_offset": 0.0,  # maker: how far below the best bid to rest (0 = join the best bid)
 }
 
 MUTABLE = {
@@ -35,6 +37,8 @@ MUTABLE = {
     "size_mult": [0.5, 0.75, 1.0, 1.25],
     "exit": ["hold", "edge_exit"],
     "exit_buffer": [0.02, 0.03, 0.05, 0.08],
+    "order": ["taker", "maker"],
+    "maker_offset": [0.0, 0.01, 0.02],
 }
 
 
@@ -63,6 +67,8 @@ class Strategy:
             s += f", skip if vol ratio > {r['vol_ratio_max']}"
         if r["exit"] == "edge_exit":
             s += f", early exit buffer {r['exit_buffer']:.2f}"
+        if r.get("order") == "maker":
+            s += ", maker limit orders (no fee)" + (f" {r['maker_offset']:.2f} below the bid" if r.get("maker_offset") else "")
         return s
 
     # ------------------------------------------------------------------ decision
@@ -79,6 +85,8 @@ class Strategy:
         vr = F.get(f, "vol_ratio")
         if r["vol_ratio_max"] and vr is not None and vr > r["vol_ratio_max"]:
             return None, f"volatility filter (ratio {vr:.1f})"
+        if r.get("order") == "maker":
+            return self._decide_maker(f, p_up, book, mkt, bankroll, settings)
         best = None
         for side, q in (("up", p_up), ("down", 1 - p_up)):
             asks = book[side]["asks"]
@@ -115,6 +123,40 @@ class Strategy:
         limit = min(best["ask"] + 0.02, r["max_price"])  # tolerate 2 ticks of movement before the fill
         return {"side": best["side"], "prob": best["prob"], "limit": round(limit, 2), "budget": round(budget, 2),
                 "edge": best["edge"], "cost_per_share": avg}, "trade"
+
+    def _decide_maker(self, f, p_up, book, mkt, bankroll, settings):
+        """Rest a bid instead of paying the ask: no fee and no spread, but it only fills if the price comes to us."""
+        r = self.rules
+        best = None
+        for side, q in (("up", p_up), ("down", 1 - p_up)):
+            bids = book[side]["bids"]
+            if not bids:
+                continue
+            price = round(bids[0][0] - r.get("maker_offset", 0.0), 2)
+            if price < r["min_price"] or price > r["max_price"] or q < r["min_prob"] or price <= 0.01:
+                continue
+            if sum(p * s for p, s in bids[:3]) < r["min_depth_usd"]:
+                continue
+            edge = q - price
+            if best is None or edge > best["edge"]:
+                best = {"side": side, "prob": q, "price": price, "edge": edge}
+        if best is None:
+            return None, "no side passes price/probability/depth rules"
+        if best["edge"] < r["min_edge"]:
+            return None, f"edge too small ({best['edge']:+.3f})"
+        c = best["price"]
+        kelly = max((best["prob"] - c) / (1 - c), 0.0)
+        budget = bankroll * min(settings["kelly_fraction"] * kelly * r["size_mult"], settings["max_stake_pct"])
+        if budget / c < mkt.get("min_size", 5) or budget < 1.0:
+            return None, "stake below the market minimum"
+        return {"side": best["side"], "prob": best["prob"], "limit": c, "budget": round(budget, 2), "edge": best["edge"],
+                "cost_per_share": c, "maker": True}, "trade"
+
+    def maker_still_wanted(self, side, price, p_up):
+        if p_up is None:
+            return False
+        q = p_up if side == "up" else 1 - p_up
+        return q - price >= self.rules["min_edge"] * 0.5
 
     def should_exit(self, pos_side, p_up, book, mkt):
         if self.rules["exit"] != "edge_exit" or p_up is None:

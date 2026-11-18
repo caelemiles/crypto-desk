@@ -18,7 +18,7 @@ import numpy as np
 import features as F
 import market as MK
 import models as M
-from paper import Account, fee_per_share, walk_buy, walk_sell
+from paper import Account, fee_per_share, maker_fill, walk_buy, walk_sell
 from strategy import Strategy, mutate
 from util import clamp, money, sgt_day
 
@@ -92,8 +92,19 @@ def replay(strategies, models_by_id, rows, settings, slip_ticks=1):
                     cache[key] = model.predict(f)
                 p = cache[key]
                 book = MK.expand_book(cb)
+                if isinstance(pos, dict) and pos.get("resting"):
+                    r = maker_fill(book[pos["side"]], pos["price"], pos["budget"]) if t > pos["t"] else None
+                    if r and r["shares"] >= 5:
+                        pos = {"side": pos["side"], "shares": r["shares"], "cost": r["cost"]}
+                    elif t > s.rules["t_max"] or not s.maker_still_wanted(pos["side"], pos["price"], p):
+                        pos = "done"
+                        break
+                    continue
                 if pos is None:
                     order, _ = s.decide(f, p, book, mkt, SHADOW_BANKROLL, settings)
+                    if order and order.get("maker"):
+                        pos = {"resting": True, "side": order["side"], "price": order["limit"], "budget": order["budget"], "t": t}
+                        continue
                     if order:
                         asks = [(min(px + 0.01 * slip_ticks, 0.99), q) for px, q in book[order["side"]]["asks"]]
                         r = walk_buy(asks, order["budget"], order["limit"], settings["liquidity_take_pct"], 0.07, 1.0)
@@ -112,7 +123,7 @@ def replay(strategies, models_by_id, rows, settings, slip_ticks=1):
                         pos = "done"
                 if pos == "done":
                     break
-            if isinstance(pos, dict):
+            if isinstance(pos, dict) and not pos.get("resting"):
                 win = (pos["side"] == "up") == (y == 1)
                 pnl = (pos["shares"] if win else 0.0) - pos["cost"]
                 res[s.id]["pnl"][start] = pnl
@@ -271,9 +282,14 @@ class Brain:
             if sp and sp.get("status") == "open":
                 if trade_ok and s.should_exit(sp["side"], p, book, mkt):
                     orders.append(("exit", s, sp))
+            elif sp and sp.get("status") == "resting":
+                self._check_resting(sp, s, p, book, t, trade_ok)
             elif not sp and trade_ok:
                 order, reason = s.decide(f, p, book, mkt, SHADOW_BANKROLL, self.cfg)
-                if order:
+                if order and order.get("maker"):
+                    led["open"][str(start)] = {"status": "resting", "side": order["side"], "price": order["limit"],
+                                               "budget": order["budget"], "t": t, "prob": order["prob"], "edge": order["edge"]}
+                elif order:
                     orders.append(("buy", s, order))
         fresh = None
         if orders:
@@ -303,9 +319,30 @@ class Brain:
         # --- champion: real paper account
         if champ and trade_ok:
             p = P.get(champ.model_id)
-            if not self.account.has_position(mkt["slug"]) and not w.get("champ_done"):
+            ro = w.get("champ_order")
+            if ro and ro.get("status") == "resting":
+                fill = maker_fill(book[ro["side"]], ro["price"], min(ro["budget"], self.account.cash)) if t > ro["t"] else None
+                if fill and fill["shares"] >= mkt.get("min_size", 5):
+                    ro["status"] = "filled"
+                    self._open_real(mkt, start, ro["t"], f, ro, fill, champ, now, maker=True)
+                    w["champ_done"] = True
+                elif t > champ.rules["t_max"] or not champ.maker_still_wanted(ro["side"], ro["price"], p):
+                    ro["status"] = "cancelled"
+                    self.account.orders.append({"ts": now, "slug": mkt["slug"], "t": t, "side": ro["side"], "limit": ro["price"],
+                                                "budget": ro["budget"], "filled_shares": 0, "avg": None, "fee": 0,
+                                                "fills": [], "strategy": champ.id, "status": "maker bid cancelled (not filled)"})
+                    self.j.activity(f"Maker bid for {ro['side'].upper()} at ${ro['price']:.2f} cancelled: price never came to it",
+                                    kind="order")
+            elif not self.account.has_position(mkt["slug"]) and not w.get("champ_done"):
                 bankroll = self.account.equity()
                 order, reason = champ.decide(f, p, book, mkt, bankroll, self.cfg)
+                if order and order.get("maker") and not self._risk_block(now):
+                    w["champ_order"] = {"status": "resting", "side": order["side"], "price": order["limit"],
+                                        "budget": order["budget"], "t": t, "prob": order["prob"], "edge": order["edge"]}
+                    self.j.activity(f"Placed a maker bid: {order['side'].upper()} at ${order['limit']:.2f} "
+                                    f"(model {order['prob']:.0%}, no fee if filled)", kind="order")
+                    order = None
+                    reason = "maker bid resting"
                 if order:
                     blocked = self._risk_block(now)
                     if blocked:
@@ -322,6 +359,16 @@ class Brain:
         elif champ and not trade_ok and t % 30 == 0:
             w["invalid_reason"] = why_invalid
         return events
+
+    def _check_resting(self, sp, strat, p, book, t, trade_ok):
+        """A resting maker bid: fill it if the market traded through our price, else keep or cancel it."""
+        if t <= sp["t"]:
+            return
+        r = maker_fill(book[sp["side"]], sp["price"], sp["budget"])
+        if r and r["shares"] >= 5:
+            sp.update({"status": "open", "shares": r["shares"], "cost": r["cost"], "t_fill": t, "maker": True})
+        elif not trade_ok or t > strat.rules["t_max"] or not strat.maker_still_wanted(sp["side"], sp["price"], p):
+            sp["status"] = "cancelled"
 
     def _risk_block(self, now):
         acct, cfg = self.account, self.cfg
@@ -364,6 +411,22 @@ class Brain:
         self.j.activity(f"Simulated trade {pos['id']}: bought {r['shares']:.2f} {order['side'].upper()} @ "
                         f"${r['avg']:.3f} (model {order['prob']:.0%}, edge {order['edge']:+.3f}, fee ${r['fee']:.3f})"
                         + (" - partial fill" if partial else ""), kind="trade")
+
+    def _open_real(self, mkt, start, t, f, order, r, champ, now, maker=False):
+        rec = {"ts": now, "slug": mkt["slug"], "t": t, "side": order["side"], "limit": order.get("price", order.get("limit")),
+               "budget": order["budget"], "filled_shares": r["shares"], "avg": r["avg"], "fee": r["fee"], "fills": r["fills"],
+               "strategy": champ.id, "status": "maker bid filled (no fee)" if maker else "filled"}
+        self.account.orders.append(rec)
+        pos = self.account.open_position(mkt["slug"], start, order["side"], r, {
+            "t_entry": t, "prob": round(order["prob"], 4), "edge": round(order["edge"], 4), "model": champ.model_id,
+            "strategy": champ.id, "title": mkt["title"], "partial": False, "budget": order["budget"], "maker": maker,
+            "feat": {n: F.get(f, n) for n in ("d_open", "tau", "vol_ratio", "vol_bn_300", "vol_cl_300", "flow_30",
+                                               "ret_bn_30", "pm_mid_up", "p_fair", "z_fair", "twap_frac")},
+            "p_market": F.get(f, "pm_mid_up")})
+        self.window(start)["champ"] = {"t": t, "p_side": order["prob"], "side": order["side"], "trade": pos["id"]}
+        self.j.activity(f"Simulated trade {pos['id']}: maker bid filled, {r['shares']:.2f} {order['side'].upper()} @ "
+                        f"${r['avg']:.3f}, no fee (model {order['prob']:.0%})", kind="trade")
+        return pos
 
     def _early_exit(self, pos, r, mkt, f):
         left = round(pos["shares"] - r["shares"], 2)
@@ -603,6 +666,7 @@ class Brain:
         self._check_stand_down(now)
         self._seed_v2()
         self._seed_v3()
+        self._seed_v4()
         champ = self.champion
         if not champ:
             return
@@ -778,6 +842,33 @@ class Brain:
                                "title": f"{st.id}: {why.split(':')[0]}", "goal": why, "change": st.describe(),
                                "test": "Shadow-traded on live markets; needs a significant profit AND the target win rate.",
                                "evidence": "hypothesis", "origin": "win-rate target"})
+
+    def _seed_v4(self):
+        """Day-2 review: fees were a big share of the losses, so test the same ideas as maker (limit) orders,
+        which pay no fee and buy at the bid instead of the ask."""
+        if self.s["last"].get("seed_v4"):
+            return
+        self.s["last"]["seed_v4"] = time.time()
+        traders = [s for s in self.active() if not s.rules.get("observe") and s.rules.get("order", "taker") == "taker"]
+        traders.sort(key=lambda s: sum(self.s["ledgers"][s.id]["pnl"].values()), reverse=True)
+        picks = traders[:3]
+        closed = self.account.closed
+        fees = sum(t.get("fee", 0) for t in closed)
+        loss = -sum(t["pnl"] for t in closed)
+        fee_note = (f"fees were {fees / loss:.0%} of this bot's losses so far" if loss > 0 and fees > 0
+                    else "fees cost about 1.75c a share at 50c")
+        for i, base in enumerate(picks):
+            for off in ((0.0, 0.01) if i == 0 else (0.0,)):
+                rules = dict(base.rules) | {"order": "maker", "maker_offset": off}
+                why = (f"Same rules as {base.id}, but as a maker limit order {'at' if not off else f'{off:.2f} below'} the best bid. "
+                       f"Measured: {fee_note}. Hypothesis: no fee and no spread "
+                       f"turn a near-break-even strategy profitable, even though maker fills come when the price moves against us.")
+                st = self.add_strategy(base.model_id, rules, parent=base.id, note=f"{base.id} as maker orders" +
+                                       (f" ({off:.2f} below bid)" if off else ""), origin="day-2 review", hypothesis=why)
+                self.j.experiment({"exp": f"E{self._nid('exp'):03d}", "strategy": st.id, "stage": "testing",
+                                   "title": f"{st.id}: {base.id} as maker orders", "goal": why, "change": st.describe(),
+                                   "test": "Shadow-traded on live markets. Fills only when the market trades through the bid.",
+                                   "evidence": "hypothesis", "origin": "day-2 review"})
 
     def _check_rollback(self, now):
         champ = self.champion
