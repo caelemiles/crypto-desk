@@ -5,6 +5,7 @@
   "arb_starting_balance": 1000,
   "max_stake_pct": 0.03,
   "max_event_pct": 0.08,
+  "max_open_pct": 0.5,
   "daily_loss_limit_pct": 0.10,
   "liquidity_take_pct": 0.6,
   "arb_max_set_pct": 0.15,

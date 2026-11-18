@@ -278,6 +278,8 @@ class WeatherDesk:
         if any(p["key"] == key for p in a.positions):
             return
         eq = a.equity_cost()
+        if sum(p["cost"] for p in a.positions) >= self.s["max_open_pct"] * eq:
+            return
         bid, ask = G.best(book)
         kelly = max(0.0, (q - ask) / (1 - ask)) * P["kelly"] * sf
         stake = min(kelly * eq, self.s["max_stake_pct"] * eq, self.s["max_event_pct"] * eq - event_spent, a.cash * 0.95)
