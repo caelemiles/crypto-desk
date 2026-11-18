@@ -263,8 +263,9 @@ def fake_http(url, data=None, timeout=10, retries=2):
         evs = [e for e in W.events.values() if q.get("closed") != "false" or not e["closed"]]
         if q.get("tag_slug"):
             evs = [e for e in evs if any(t["slug"] == q["tag_slug"] for t in e["tags"])]
-        off, lim = int(q.get("offset", 0)), int(q.get("limit", 100))
-        return [W.public(e) for e in evs[off:off + lim]]
+        off, lim = int(q.get("after_cursor", 0)), int(q.get("limit", 100))
+        page = [W.public(e) for e in evs[off:off + lim]]
+        return {"events": page} | ({"next_cursor": str(off + lim)} if len(page) == lim else {})
     if u.netloc.startswith("clob"):
         return [b for b in (W.book(x["token_id"]) for x in data) if b]
     if "aviationweather" in u.netloc:
@@ -281,6 +282,8 @@ def fake_http(url, data=None, timeout=10, retries=2):
 def main(days):
     K._clock["fn"] = lambda: CLOCK["t"]
     K._http["fn"] = fake_http
+    import time
+    time.sleep = lambda s: None
     import run
     ctl = run.Controller(minutes=days * 1440)
 

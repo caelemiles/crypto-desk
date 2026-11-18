@@ -93,17 +93,20 @@ def parse_event(e):
     }
 
 
-def events(params, pages=1, limit=100, start_offset=0):
+def events(params, pages=1, limit=100, cursor=None):
+    """Events via Gamma's keyset endpoint (the old offset paging is rejected). Returns (events, next cursor)."""
     out = []
-    for i in range(pages):
-        q = dict(params) | {"limit": limit, "offset": start_offset + i * limit}
-        rows = K.http(f"{K.GAMMA}/events?{urllib.parse.urlencode(q)}", timeout=15)
-        if not rows:
+    q = {k: v for k, v in params.items() if k != "active"} | {"limit": min(int(limit), 100)}
+    for _ in range(pages):
+        if cursor:
+            q["after_cursor"] = cursor
+        d = K.http(f"{K.GAMMA}/events/keyset?{urllib.parse.urlencode(q)}", timeout=15) or {}
+        rows = d.get("events") if isinstance(d, dict) else d
+        out.extend(parse_event(e) for e in rows or [])
+        cursor = d.get("next_cursor") if isinstance(d, dict) else None
+        if not cursor:
             break
-        out.extend(parse_event(e) for e in rows)
-        if len(rows) < limit:
-            break
-    return out
+    return out, cursor
 
 
 def event_by_slug(slug):

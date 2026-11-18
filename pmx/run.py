@@ -99,7 +99,7 @@ class Controller:
             self.a.mark()
         if self.due("wdiscover"):
             try:
-                self.w.discover(G.events({"tag_slug": "weather", "closed": "false", "active": "true"}, pages=4))
+                self.w.discover(G.events({"tag_slug": "weather", "closed": "false"}, pages=6)[0])
             except K.FetchError as e:
                 self.j.integrity_event("gamma", f"weather tag: {e}")
         if self.due("slugs"):
@@ -121,17 +121,15 @@ class Controller:
             self.publish(full=False)
 
     def fetch_events(self):
-        base = {"active": "true", "closed": "false", "order": "volume24hr", "ascending": "false"}
+        base = {"closed": "false", "order": "volume24hr", "ascending": "false"}
         evs = []
         try:
-            try:
-                evs = G.events(base, pages=2)                   # the busiest events, every minute
-            except K.FetchError:
-                base = {"active": "true", "closed": "false"}   # if Gamma ever rejects the ordering, scan unordered
-                evs = G.events(base, pages=2)
-            evs += G.events(base, pages=3, start_offset=200 + self.a.offset)   # plus a rotating slice of the rest
-            self.a.offset = (self.a.offset + 300) % 3000
+            top, _ = G.events(base, pages=2)                                    # the busiest events, every minute
+            more, cur = G.events(base, pages=3, cursor=self.a.cursor or None)   # plus a rotating slice of the rest
+            self.a.cursor = cur
+            evs = top + more
         except K.FetchError as e:
+            self.a.cursor = None
             self.j.integrity_event("gamma", str(e))
         uniq = {}
         for e in evs:
@@ -178,6 +176,7 @@ class Controller:
                 "weather": live["weather"] | {"closed": self.w.acct.closed[-400:], "curve": self.w.acct.curve[-3000:],
                                               "lab": self.w.lab.table(), "calibration": self.w.calibration_table(),
                                               "brier": self.w.last.get("brier", []), "blocked": self.w.blocked,
+                                              "samples": self.w.samples,
                                               "tracked": len(self.w.events)},
                 "arb": live["arb"] | {"closed": self.a.acct.closed[-400:], "curve": self.a.acct.curve[-3000:],
                                       "lab": self.a.lab.table(), "lifetimes": self.a.lifetimes[-300:],

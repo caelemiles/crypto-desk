@@ -53,14 +53,14 @@ class ArbDesk:
         self.slips = d.get("slips", [])        # [kind, legs, planned margin, real margin] from leg-risk simulation
         self.held = d.get("held", {})          # event slug -> {"checked": ts, "markets": [...]} awaiting settlement
         self.stats = d.get("stats", {"scans": 0, "events": 0, "candidates": 0, "confirmed": 0, "by_kind": {}, "by_tag": {}})
-        self.offset = d.get("offset", 0)
+        self.cursor = d.get("cursor")
         self.live = []
         self.marks = {}
 
     def to_dict(self):
         return {"account": self.acct.to_dict(), "lab": self.lab.to_dict(), "seen": self.seen,
                 "lifetimes": self.lifetimes[-3000:], "slips": self.slips[-3000:], "held": self.held,
-                "stats": self.stats, "offset": self.offset}
+                "stats": self.stats, "cursor": self.cursor}
 
     # ------------------------------------------------------------------ finding candidates
     def candidates(self, evs):

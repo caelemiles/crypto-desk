@@ -51,12 +51,13 @@ class WeatherDesk:
         self.marks = {}
         self.live = []                           # latest per-event view for the dashboard
         self.counters = d.get("counters", {"scans": 0, "decisions": 0})
+        self.samples = d.get("samples", {})      # text of a few events it could not read (to fix the parser)
 
     def to_dict(self):
         return {"account": self.acct.to_dict(), "lab": self.lab.to_dict(), "cal": self.cal.to_dict(),
                 "events": self.events, "skipped": dict(list(self.skipped.items())[-400:]), "stations": self.stations,
                 "blocked": self.blocked, "exited": {k: v for k, v in self.exited.items() if K.now() - v < 3 * 86400},
-                "last": self.last, "counters": self.counters}
+                "last": self.last, "counters": self.counters, "samples": self.samples}
 
     # ------------------------------------------------------------------ discovery
     def discover(self, evs):
@@ -68,6 +69,10 @@ class WeatherDesk:
             if not info:
                 if ev["slug"] not in self.skipped:
                     self.skipped[ev["slug"]] = why
+                    if len(self.samples) < 4:
+                        self.samples[ev["slug"]] = {"why": why, "description": ev["description"][:1500],
+                                                    "resolution_source": ev.get("resolution_source"),
+                                                    "market0": (ev["markets"][0]["question"] + " || " + ev["markets"][0]["description"][:1200]) if ev["markets"] else None}
                     self.j.activity(f"Skipping {ev['title']}: {why}", kind="skip")
                 continue
             info["buckets"] = [{k: v for k, v in b.items() if k != "mk"} | {
