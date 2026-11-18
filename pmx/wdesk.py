@@ -14,12 +14,12 @@ import weather as W
 from lab import Lab
 
 SEED = {"min_edge": 0.08, "min_prob": 0.05, "max_price": 0.65, "sides": "both", "max_lead": 1, "kelly": 0.2,
-        "exit_edge": 0.12, "max_spread_c": 3.0, "trust": 0.85, "city_filter": True}
+        "exit_edge": 0.12, "max_spread_c": 3.0, "trust": 0.85, "city_filter": True, "max_disagree": 0.35}
 SPACE = {"min_edge": [0.03, 0.05, 0.08, 0.1, 0.13, 0.16, 0.2, 0.25], "min_prob": [0.0, 0.02, 0.05, 0.1, 0.2, 0.3, 0.45],
          "max_price": [0.12, 0.2, 0.3, 0.45, 0.65, 0.8, 0.92], "sides": ["yes", "both", "no"], "max_lead": [0, 1, 2],
          "kelly": [0.08, 0.12, 0.2, 0.3, 0.45], "exit_edge": [0.06, 0.12, 0.2, 0.35, 2.0],
          "max_spread_c": [1.5, 2.0, 3.0, 4.0, 6.0, 99.0], "trust": [0.5, 0.65, 0.75, 0.85, 0.95, 1.0],
-         "city_filter": [True, False]}
+         "city_filter": [True, False], "max_disagree": [0.15, 0.25, 0.35, 0.5, 0.7, 1.0]}
 
 CITY_SLUGS = ["nyc", "london", "chicago", "miami", "dallas", "atlanta", "seattle", "toronto", "seoul", "tokyo", "paris",
               "ankara", "wellington", "buenos-aires", "shanghai", "austin", "los-angeles", "san-francisco", "denver",
@@ -107,6 +107,28 @@ class WeatherDesk:
     # ------------------------------------------------------------------ data
     def _station(self, icao, unit):
         st = self.stations.setdefault(icao, {"obs": {}, "unit": unit})
+        self._read_metar(st, icao, unit)
+        if st.get("lat") is None:
+            return None, None
+        t = K.now()
+        c = self.fc.get(icao)
+        if not c or t - c[0] > 3600:   # hourly: models update every 6-12 h, and the free API has a daily limit
+            try:
+                data = W.forecasts(st["lat"], st["lon"], unit)
+                if data["det"] or data["ens"]:
+                    self.fc[icao] = (t, data)
+                    if data.get("tz_offset") is not None:
+                        first = st.get("tz") is None
+                        st["tz"] = data["tz_offset"]
+                        if first:   # now the local day is known: read the observations properly
+                            st["metar_ts"] = 0
+                            self._read_metar(st, icao, unit)
+            except K.FetchError as e:
+                self.j.integrity_event("forecast", f"{icao}: {e}")
+        c = self.fc.get(icao)
+        return st, (c[1] if c else None)
+
+    def _read_metar(self, st, icao, unit):
         t = K.now()
         if t - st.get("metar_ts", 0) > 600:
             try:
@@ -123,25 +145,9 @@ class WeatherDesk:
                             st["obs"][day] = round(v, 2)
                     for day in sorted(st["obs"])[:-6]:
                         st["obs"].pop(day, None)
+                    st["obs_ok"] = t
             except K.FetchError as e:
                 self.j.integrity_event("metar", f"{icao}: {e}")
-        if st.get("lat") is None:
-            return None, None
-        c = self.fc.get(icao)
-        if not c or t - c[0] > 3600:   # hourly: models update every 6-12 h, and the free API has a daily limit
-            try:
-                data = W.forecasts(st["lat"], st["lon"], unit)
-                if data["det"] or data["ens"]:
-                    self.fc[icao] = (t, data)
-                    if data.get("tz_offset") is not None:
-                        first = st.get("tz") is None
-                        st["tz"] = data["tz_offset"]
-                        if first:
-                            st["metar_ts"] = 0    # now the local day is known, re-read observations
-            except K.FetchError as e:
-                self.j.integrity_event("forecast", f"{icao}: {e}")
-        c = self.fc.get(icao)
-        return st, (c[1] if c else None)
 
     # ------------------------------------------------------------------ scanning and deciding
     def scan(self):
@@ -158,7 +164,10 @@ class WeatherDesk:
                 self.j.activity(f"{e['city']} {e['date']} is over locally (max seen {f2(st['obs'].get(e['date']))}°"
                                 f"{e['unit']}); waiting for settlement", kind="info")
                 continue
-            obs = st["obs"].get(e["date"]) if W.lead_of(e["date"], t, st["tz"]) == 0 else None
+            lead0 = W.lead_of(e["date"], t, st["tz"]) == 0
+            if lead0 and t - st.get("obs_ok", 0) > 1800:
+                continue   # never trade today's market without knowing what the airport has already measured
+            obs = st["obs"].get(e["date"]) if lead0 else None
             fs = W.forecast_state(fc, e["date"], t, obs, self.cal, e["station"], e["unit"])
             if fs:
                 ready.append((e, fs))
@@ -223,7 +232,7 @@ class WeatherDesk:
                         continue
                     if f"{vid}|{key}" in self.exited:
                         continue
-                    ok, why = self._rules(P, side, q, ask, fs, st_blocked)
+                    ok, why = self._rules(P, side, q, ask, fs, st_blocked, mkt)
                     if not ok:
                         continue
                     self.counters["decisions"] += 1
@@ -241,7 +250,7 @@ class WeatherDesk:
                         self._champ_enter(e, b, side, tok, book, q, q_model, P, fs, sf, event_spent, key)
                         event_spent = sum(p["cost"] for p in self.acct.positions if p.get("event") == e["slug"])
 
-    def _rules(self, P, side, q, ask, fs, blocked):
+    def _rules(self, P, side, q, ask, fs, blocked, mkt):
         if P["city_filter"] and blocked:
             return False, "station blocked"
         if fs["lead_n"] > P["max_lead"]:
@@ -252,6 +261,10 @@ class WeatherDesk:
             return False, "side not traded"
         if ask >= 0.995 or ask > P["max_price"]:
             return False, "too expensive"
+        if ask < 0.015:
+            return False, "lottery price: the market is sure, we are probably missing information"
+        if abs(q - mkt) > P["max_disagree"]:
+            return False, "disagrees with the market too much"
         if q < P["min_prob"]:
             return False, "too unlikely"
         if q - ask < P["min_edge"]:
