@@ -146,6 +146,9 @@ function pOverview(){
   return `<div class="grid" style="margin-top:14px">
    ${o.paused_until?`<div class="warn">New entries paused until ${tsg(o.paused_until)} (risk limit).</div>`:''}
    <div class="kpis">${k}</div>
+   ${o.readiness?`<div class="card"><h2>Target ${o.readiness.reached?'<span class="badge b-ok">reached</span>':'<span class="badge b-paper">not yet</span>'}</h2>
+     ${o.readiness.checks.map(c=>`<div class="pb" style="grid-template-columns:22px 1fr auto"><span class="${c.ok?'pos':'neg'}">${c.ok?'✓':'○'}</span><span>${esc(c.label)}</span><span class="mono">${esc(c.value)}</span></div>`).join('')}
+     <div class="note" style="margin-top:6px">Reaching the target means the strategy is proven on paper. It does not switch to real money: Polymarket lists Singapore and the US (where GitHub runs this bot) as close-only, so there is no real-money mode.</div></div>`:''}
    <div class="grid g2">
      <div class="grid">
        <div class="card"><h2>Active market</h2>${marketCard()}</div>

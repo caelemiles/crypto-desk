@@ -194,7 +194,36 @@ def overview(brain, marks, now):
             "avg_loss": st["avg_loss"], "fees": st["fees"], "daily_pnl": acct.day.get(day, {}).get("pnl", 0.0),
             "weekly_pnl": window_pnl(7), "monthly_pnl": window_pnl(30), "brier": brier(ps, ys), "brier_7d": brier(ps7, ys7),
             "brier_n": len(ps), "open_positions": len(acct.positions), "champion": brain.s.get("champion"),
-            "paused_until": acct.paused_until if acct.paused_until > now else None}
+            "paused_until": acct.paused_until if acct.paused_until > now else None,
+            "readiness": readiness(brain, acct, st, eq, now, window_pnl(7))}
+
+
+def readiness(brain, acct, st, eq, now, week_pnl):
+    """'Target reached' checklist: what the paper results must show before the strategy counts as proven.
+    Reaching it switches nothing to real money: Polymarket takes no new orders from Singapore or the US."""
+    target = float(brain.cfg.get("target_win_rate", 0.8))
+    first = brain.s.setdefault("readiness_since", acct.equity_curve[0][0] if acct.equity_curve else now)
+    days = (now - first) / 86400
+    rets = [t["pnl"] / t["cost"] for t in acct.closed if t.get("cost")]
+    tstat = None
+    if len(rets) >= 5:
+        m = float(np.mean(rets))
+        sd = float(np.std(rets, ddof=1)) or 1e-9
+        tstat = m / (sd / len(rets) ** 0.5)
+    staked = st.get("staked") or 0
+    roi = (st["pnl"] / staked) if staked else None
+    checks = [
+        {"label": "Running at least 14 days", "ok": days >= 14, "value": f"{days:.1f} days"},
+        {"label": "At least 300 settled trades", "ok": st["trades"] >= 300, "value": st["trades"]},
+        {"label": "In profit overall", "ok": eq > acct.start_balance, "value": f"{eq - acct.start_balance:+.2f}"},
+        {"label": "Return on money staked at least 3%", "ok": (roi or -1) >= 0.03, "value": f"{(roi or 0) * 100:+.1f}%"},
+        {"label": "Profit unlikely to be luck (t-stat 2+)", "ok": (tstat or 0) >= 2, "value": f"{tstat:.2f}" if tstat else "-"},
+        {"label": f"Win rate at least {target:.0%}", "ok": (st["win_rate"] or 0) >= target,
+         "value": f"{(st['win_rate'] or 0) * 100:.1f}%"},
+        {"label": "Profitable over the last 7 days", "ok": week_pnl > 0, "value": f"{week_pnl:+.2f}"},
+        {"label": "Worst drop below 25%", "ok": acct.max_dd <= 0.25, "value": f"{acct.max_dd * 100:.1f}%"},
+    ]
+    return {"reached": all(c["ok"] for c in checks), "checks": checks}
 
 
 def lab(brain):

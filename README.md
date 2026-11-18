@@ -70,3 +70,30 @@ The AI's memory (models, strategies, paper account, journal) is on the `pm5-data
   Change `reset_token` to restart the paper account; learning is kept.
 - **Pause / resume:** Actions → "PM5 BTC 5-min paper AI" → Disable / Enable workflow.
 - **Offline test:** `python pm5/sim_test.py 6` runs the real controller for 6 simulated hours on a synthetic market.
+
+---
+
+# PMX – Polymarket Weather + Arbitrage AI (paper trading)
+
+Two more paper-trading desks in one bot (`pmx/`), run by `.github/workflows/pmx.yml` around the clock.
+**Paper money only.** Polymarket lists Singapore and the United States (where GitHub runs the bots) as close-only:
+no new positions on the website or the API. So no bot in this repository has a real-money mode.
+
+**Dashboard:** `https://caelemiles.github.io/crypto-desk/pmx/` (memory and data on the `pmx-data` branch)
+
+| Desk | What it does | How it learns |
+|---|---|---|
+| Weather (`pmx/wdesk.py`, `pmx/weather.py`) | Daily "highest temperature in <city>" markets. Reads the exact airport station each market settles on (Weather Underground / METAR), what it has measured so far today, and GFS / ECMWF / ICON ensembles from Open-Meteo; prices every bucket and buys YES or NO when the model beats the order book. | After every settled day: each model's error per station, the station's bias, extra uncertainty, how Polymarket rounds, and whether its probabilities beat the market's (Brier score). Stations where the market is better get blocked. |
+| Arbitrage (`pmx/adesk.py`) | Scans the active events every minute for sets that are guaranteed to pay more than they cost after fees: every YES of an exclusive event under $1, every NO under N-1, and "ladders" (YES on a lower level + NO on a higher level: worst case the margin, best case double). | Every gap: how long it lasts, how much the price moves between the first and last leg (leg risk, simulated with a second book read), which categories produce gaps. The margin it demands includes the leg risk it has measured. |
+
+Both desks run a **strategy lab** (`pmx/lab.py`): up to 12 rule versions trade every opportunity in the shadows on the
+real order book; a challenger replaces the champion only after beating it on profit and return over the same period
+with 40+ settled trades and a confidence interval above zero. Only the champion's trades go to the paper account.
+
+Each desk has a **target** (`pmx/readiness.py`, thresholds in `pmx/settings.json`): days running, settled trades,
+return, t-stat, recent profit, drawdown. The BTC and ETH 5-minute dashboards show the same kind of checklist.
+Reaching it means "proven on paper"; it does not switch anything to real money.
+
+- **Settings:** `pmx/settings.json` (re-read every ~10 minutes). Change `reset_token` to restart both paper accounts.
+- **Pause / resume:** Actions → "PMX weather + arbitrage paper AI" → Disable / Enable workflow.
+- **Offline test:** `python pmx/sim_test.py 6` runs the real controller for 6 simulated days on a fake market.

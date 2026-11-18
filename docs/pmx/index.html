@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Weather + Arbitrage AI · Polymarket paper trader</title>
+<style>
+:root{--bg:#EDF0F3;--card:#fff;--line:#D8DEE6;--ink:#101B2D;--muted:#5A6779;--acc:#0F6B66;--acc2:#3557C4;--win:#11803F;--loss:#BF2F2F;--winbg:#DDF3E5;--lossbg:#F9E1E0;--hyp:#8A5A00;--hypbg:#FCEFD3;--soft:#F5F7F9}
+@media (prefers-color-scheme:dark){:root{--bg:#0B1017;--card:#131A24;--line:#263140;--ink:#E8EDF3;--muted:#93A1B3;--acc:#3CC4B7;--acc2:#7C9BFF;--win:#4ADE80;--loss:#F87171;--winbg:#12301F;--lossbg:#381616;--hyp:#F5C04E;--hypbg:#33280F;--soft:#0F151E}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.top{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.wrap{max-width:1180px;margin:0 auto;padding:12px 16px}
+.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:20px;letter-spacing:.03em;text-transform:uppercase}h2{margin:0 0 10px;font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+h3{margin:0 0 6px;font-size:15px}
+.sub{color:var(--muted);font-size:12.5px}.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle}
+.b-paper{background:var(--hypbg);color:var(--hyp)}.b-ok{background:var(--winbg);color:var(--win)}.b-bad{background:var(--lossbg);color:var(--loss)}
+.b-meas{background:var(--winbg);color:var(--win)}.b-hyp{background:var(--hypbg);color:var(--hyp)}.b-ev{background:var(--soft);color:var(--muted);border:1px solid var(--line)}
+.tabs{display:flex;gap:2px;overflow-x:auto;margin-top:10px;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
+.tab{border:0;background:none;color:var(--muted);padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--ink);border-color:var(--acc)}
+.big{font-size:26px;font-weight:650}.pos{color:var(--win)}.neg{color:var(--loss)}
+.grid{display:grid;gap:14px}.g2{grid-template-columns:1.4fr 1fr}.g2e{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:860px){.g2,.g2e,.g3{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .k{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}.kpi .v{font-size:19px;font-weight:650;margin-top:2px}.kpi .s{font-size:11.5px;color:var(--muted)}
+table{border-collapse:collapse;width:100%}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;font-size:13px}
+th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+th:first-child,td:first-child{text-align:left}td.l,th.l{text-align:left;white-space:normal}.scroll{overflow-x:auto}
+.tag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600;margin:1px 2px 1px 0;background:var(--soft);border:1px solid var(--line);color:var(--muted)}
+.tag.w{background:var(--winbg);color:var(--win);border-color:transparent}.tag.l{background:var(--lossbg);color:var(--loss);border-color:transparent}
+.note{font-size:12px;color:var(--muted)}ul{margin:0;padding-left:18px}li{margin:3px 0}
+.feed{max-height:560px;overflow:auto}.fr{display:grid;grid-template-columns:62px 1fr;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.fr .t{color:var(--muted);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.k-trade{color:var(--acc);font-weight:600}.k-model{color:var(--acc2);font-weight:600}.k-risk{color:var(--loss);font-weight:600}.k-experiment{color:var(--hyp)}
+.bar{height:9px;border-radius:99px;background:var(--line);overflow:hidden;position:relative}.bar>i{display:block;height:100%;background:var(--acc)}
+.pb{display:grid;grid-template-columns:150px 1fr 52px;gap:8px;align-items:center;margin:6px 0;font-size:13px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.chip{border:1px solid var(--line);background:none;color:var(--ink);border-radius:99px;padding:3px 10px;font-size:12px;cursor:pointer}.chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.entry{border:1px solid var(--line);border-radius:9px;padding:11px 12px;margin-bottom:10px;background:var(--card)}
+.entry .meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:5px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}.kv div:nth-child(odd){color:var(--muted)}
+.count{font-size:34px;font-weight:700}
+.empty{color:var(--muted);font-style:italic;padding:8px 0}
+.chart{height:300px}
+.hide{display:none}
+.warn{padding:9px 12px;border-radius:8px;background:var(--hypbg);color:var(--hyp);font-size:13px}
+.side-up{color:var(--win);font-weight:700}.side-down{color:var(--loss);font-weight:700}
+svg text{fill:var(--muted);font-size:10px}
+.card svg{max-width:440px;margin:0 auto}td.l{min-width:220px}
+</style>
+</head><body>
+<div class="top"><div class="wrap">
+  <div class="head">
+    <div><h1>Weather + Arbitrage AI <span class="badge b-paper">Paper trading</span></h1>
+      <div class="sub" id="sub">Loading…</div></div>
+    <div style="text-align:right"><div class="sub">Combined equity (paper USDC)</div><div class="big mono" id="eq">–</div></div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+</div></div>
+<div class="wrap" id="main"><div class="empty">Loading the latest data…</div></div>
+<script>
+const OWNER = location.hostname.endsWith('github.io') ? location.hostname.split('.')[0] : 'caelemiles';
+const REPO = (location.hostname.endsWith('github.io') && location.pathname.split('/')[1]) || 'crypto-desk';
+const BR = 'pmx-data';
+const PAGES = ['Overview','Weather','Arbitrage','Trades','Learning Journal','Strategy Lab','Activity','Settings'];
+let page = (location.hash||'').slice(1).replace(/-/g,' ') || 'Overview'; if(!PAGES.includes(page)) page='Overview';
+let L = null, D = null, sha = null, jf = 'all';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num = (v, d=2) => v==null || isNaN(v) ? '–' : Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const usd = (v, d=2) => v==null ? '–' : (v<0?'-$':'$') + num(Math.abs(v), d);
+const sgn = (v, d=2) => v==null ? '–' : (v>=0?'+':'-') + '$' + num(Math.abs(v), d);
+const pct = (v, d=1) => v==null ? '–' : (v*100).toFixed(d) + '%';
+const cents = v => v==null ? '–' : (v*100).toFixed(1) + '¢';
+const cls = v => v==null ? '' : v>0 ? 'pos' : v<0 ? 'neg' : '';
+const tsg = (ts, withDate) => { if(!ts) return '–'; const o = {timeZone:'Asia/Singapore',hour:'2-digit',minute:'2-digit',hour12:false}; if(withDate){o.day='2-digit';o.month='short'} return new Date(ts*1000).toLocaleString('en-GB', o); };
+const ago = ts => { if(!ts) return '–'; const s = Date.now()/1000 - ts; if(s<90) return Math.round(s)+'s ago'; if(s<5400) return Math.round(s/60)+' min ago'; return (s/3600).toFixed(1)+' h ago'; };
+const evb = e => e==='measured' ? '<span class="badge b-meas">measured</span>' : e==='hypothesis' ? '<span class="badge b-hyp">hypothesis</span>' : '<span class="badge b-ev">event</span>';
+const kpi = (k, v, s, c) => `<div class="kpi"><div class="k">${k}</div><div class="v mono ${c||''}">${v}</div>${s?`<div class="s">${s}</div>`:''}</div>`;
+const table = (heads, rows, empty) => rows.length ? `<div class="scroll"><table><tr>${heads.map(h=>`<th class="${h.startsWith('_')?'l':''}">${h.replace(/^_/,'')}</th>`).join('')}</tr>${rows.join('')}</table></div>` : `<div class="empty">${empty||'Nothing yet.'}</div>`;
+async function getJSON(u){ const r = await fetch(u, {cache:'no-store'}); if(!r.ok) throw new Error(r.status); return r.json(); }
+async function latestSha(){ try { return (await getJSON(`https://api.github.com/repos/${OWNER}/${REPO}/branches/${BR}`)).commit.sha; } catch(e){ return null; } }
+const SRC = new URLSearchParams(location.search).get('src');
+async function load(full){
+  const s = SRC ? 'local' : await latestSha();
+  const base = SRC ? SRC : `https://raw.githubusercontent.com/${OWNER}/${REPO}/${s||BR}/`;
+  try { L = await getJSON(base + 'live.json?t=' + Date.now()); } catch(e){ if(!L){ $('#main').innerHTML = '<div class="card">No data yet. The bot publishes its first results a few minutes after it starts.</div>'; return; } }
+  if(full || !D || s !== sha){ try { D = await getJSON(base + 'data.json?t=' + Date.now()); } catch(e){} }
+  sha = s; render();
+}
+function X(k){ return (D && D[k]) ? Object.assign({}, D[k], L[k]) : L[k]; }
+function header(){
+  const w = L.weather.overview, a = L.arb.overview;
+  $('#eq').textContent = usd(w.equity + a.equity);
+  const fresh = Date.now()/1000 - L.generated < 600;
+  $('#sub').innerHTML = `<span class="badge ${fresh?'b-ok':'b-bad'}">${fresh?'running':'not updating'}</span> updated ${ago(L.generated)} · run ${esc(L.run.id)} · next hand-over ${tsg(L.run.ends)} SGT`;
+  $('#tabs').innerHTML = PAGES.map(p=>`<button class="tab ${p===page?'on':''}" data-p="${p}">${p}</button>`).join('');
+  document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{page=b.dataset.p; location.hash=page.replace(/ /g,'-'); render();});
+}
+function curve(pts){
+  if(!pts || pts.length<2) return '<div class="empty">The equity curve appears after a few hours.</div>';
+  const W=440,H=120, xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]); const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys)||1;
+  const sx=x=>(x-x0)/(x1-x0||1)*W, sy=y=>H-(y-y0)/((y1-y0)||1)*(H-10)-5;
+  return `<svg viewBox="0 0 ${W} ${H+14}"><polyline fill="none" stroke="var(--acc)" stroke-width="2" points="${pts.map(p=>sx(p[0]).toFixed(1)+','+sy(p[1]).toFixed(1)).join(' ')}"/><text x="0" y="${H+12}">${usd(y0,0)}</text><text x="${W-60}" y="${H+12}">${usd(y1,0)}</text></svg>`;
+}
+function gate(name, g){
+  return `<div class="card"><h2>${name} — target ${g.reached?'<span class="badge b-ok">reached</span>':'<span class="badge b-paper">not yet</span>'}</h2>
+  ${g.checks.map(c=>`<div class="pb" style="grid-template-columns:22px 1fr auto"><span class="${c.ok?'pos':'neg'}">${c.ok?'✓':'○'}</span><span>${esc(c.label)}</span><span class="mono">${esc(c.value)}</span></div>`).join('')}
+  <div class="note" style="margin-top:6px">Reaching the target means the strategy is proven on paper. It does not switch to real money (see the note above).</div></div>`;
+}
+function deskKpis(o){
+  return `<div class="kpis">${kpi('Equity', usd(o.equity), 'start '+usd(o.start,0), '')}${kpi('Profit', sgn(o.pnl), pct(o.pnl/o.start)+' of start', cls(o.pnl))}
+  ${kpi('Settled', o.all.n, o.all.win_rate==null?'':'win rate '+pct(o.all.win_rate))}${kpi('Return per $ staked', o.all.roi==null?'–':pct(o.all.roi), 't-stat '+(o.all.t_stat==null?'–':num(o.all.t_stat)), cls(o.all.roi))}
+  ${kpi('Last 24h', sgn(o.d1.pnl), o.d1.n+' settled', cls(o.d1.pnl))}${kpi('Open', o.open, 'cash '+usd(o.cash))}${kpi('Worst drop', pct(o.max_dd), '')}
+  ${kpi('Champion', esc(o.champion), o.size_factor<1?'reduced size x'+o.size_factor:'full size')}</div>`;
+}
+function overview(){
+  const w = X('weather'), a = X('arb');
+  return `<div class="warn" style="margin-bottom:14px"><b>Paper trading only.</b> ${esc(L.real_trading.reason)}</div>
+  <div class="grid g2e"><div class="card"><h2>Weather desk</h2>${deskKpis(w.overview)}<div style="margin-top:10px">${curve(w.curve)}</div></div>
+  <div class="card"><h2>Arbitrage desk</h2>${deskKpis(a.overview)}<div style="margin-top:10px">${curve(a.curve)}</div></div></div>
+  <div class="grid g2e" style="margin-top:14px">${gate('Weather', w.readiness)}${gate('Arbitrage', a.readiness)}</div>
+  <div class="card" style="margin-top:14px"><h2>Latest discoveries</h2>${disc((D&&D.journal.discoveries||[]).slice(-5).reverse())}</div>`;
+}
+function disc(xs){ return xs.length ? xs.map(d=>`<div class="entry"><div class="meta"><b>${esc(d.title)}</b><span>${evb(d.evidence)} ${tsg(d.ts,1)}</span></div>${esc(d.body)}</div>`).join('') : '<div class="empty">Nothing learned yet: discoveries appear after the first days settle.</div>'; }
+function openTable(rows, kind){
+  if(kind==='weather') return table(['_Market','Side','Shares','Cost','Price','Model','Lead','Opened'], rows.map(p=>`<tr><td class="l">${esc(p.city)} ${esc(p.date)} · ${esc(p.bucket)}</td><td>${p.side}</td><td class="mono">${num(p.shares,0)}</td><td class="mono">${usd(p.cost)}</td><td class="mono">${cents(p.price)}</td><td class="mono">${pct(p.p,0)}</td><td>${p.lead}d</td><td>${tsg(p.opened,1)}</td></tr>`), 'No open weather bets.');
+  return table(['_Set','Kind','Legs','Shares','Cost','Guaranteed','Fill','Opened'], rows.map(p=>`<tr><td class="l">${esc(p.title)}</td><td>${esc(p.kind)}</td><td>${p.legs.length}</td><td class="mono">${num(p.shares,0)}</td><td class="mono">${usd(p.cost)}</td><td class="mono">${usd(p.payout_min)}</td><td>${esc(p.fill)}</td><td>${tsg(p.opened,1)}</td></tr>`), 'No open sets.');
+}
+function weather(){
+  const w = X('weather');
+  const live = (w.live||[]).map(e=>{
+    const rows = e.buckets.map(b=>{ const mid=(b.bid+b.ask)/2, edge=b.p-b.ask; return `<tr><td>${esc(b.label)}</td><td class="mono">${pct(b.p,1)}</td><td class="mono">${cents(b.bid)}</td><td class="mono">${cents(b.ask)}</td><td class="mono ${edge>0.05?'pos':''}">${edge>0?'+':''}${(edge*100).toFixed(1)}¢</td></tr>`; }).join('');
+    return `<div class="card"><h3>${esc(e.city)} · ${esc(e.date)} <span class="tag">${e.lead===0?'today':e.lead+'d ahead'}</span> <span class="tag">${esc(e.station)}</span>${e.blocked?'<span class="tag l">blocked</span>':''}</h3>
+    <div class="note">Forecast max <b>${num(e.forecast,1)}°${e.unit}</b> ± ${num(e.sigma,1)} (learned bias ${e.bias>=0?'+':''}${num(e.bias,2)})${e.obs_max!=null?` · already observed <b>${num(e.obs_max,1)}°</b>`:''} · models ${Object.entries(e.models).map(([m,v])=>esc(m.replace('_seamless','').replace('_ifs025',''))+' '+v).join(', ')}</div>
+    ${table(['Bucket','Model','Bid','Ask','Edge'], [rows])}</div>`; }).join('');
+  const cal = (w.calibration||[]).map(r=>`<tr><td>${esc(r.station)}</td><td>°${esc(r.unit)}</td><td class="mono">${r.n0}/${r.n1}/${r.n2}</td><td class="mono">${r.bias0}/${r.bias1}/${r.bias2}</td><td class="mono">${r.sigma0}/${r.sigma1}/${r.sigma2}</td><td>${esc(r.rounding)}</td><td class="l">${Object.entries(r.weights).map(([m,v])=>esc(m.replace('_seamless','').replace('_ifs025',''))+' '+pct(v,0)).join(', ')}</td></tr>`);
+  const br = (w.brier||[]).map(r=>`<tr><td>${esc(r.station)}</td><td class="mono">${r.n}</td><td class="mono ${r.ours<r.market?'pos':'neg'}">${r.ours}</td><td class="mono">${r.market}</td><td>${r.ours<r.market?'model':'market'}</td></tr>`);
+  return `<div class="card"><h2>Open weather bets</h2>${openTable(w.open,'weather')}</div>
+  <h2 style="margin:16px 0 8px">Live: model vs market (${(w.live||[]).length} city-days)</h2><div class="grid g2e">${live||'<div class="empty">Waiting for the first weather scan.</div>'}</div>
+  <div class="grid g2e" style="margin-top:14px"><div class="card"><h2>What it learned per station</h2><div class="note">Samples, bias and extra uncertainty for same day / next day / 2+ days ahead; model weights for next-day forecasts.</div>${table(['Station','Unit','Samples','Bias','Extra ±','Rounding','_Model weights'], cal, 'Learning starts when the first days settle.')}</div>
+  <div class="card"><h2>Model vs market accuracy</h2><div class="note">Brier score of the bucket probabilities (lower is better), last 60 days.</div>${table(['Station','Buckets','Model','Market','Better'], br, 'Needs settled days.')}</div></div>`;
+}
+function arb(){
+  const a = X('arb'), st = a.stats||{};
+  const live = (a.live||[]).map(x=>`<tr><td class="l">${esc(x.title)}</td><td>${esc(x.kind)}</td><td>${x.legs}</td><td class="mono pos">${(x.margin*100).toFixed(2)}¢</td><td class="mono">${num(x.shares,0)}</td><td class="mono pos">${usd(x.profit)}</td><td class="mono">${num(x.days,1)}d</td><td class="mono">${num(x.age_min,1)} min</td></tr>`);
+  const slip = Object.entries(a.slip||{}).map(([k,v])=>`${esc(k)} ${(v*100).toFixed(2)}¢/leg`).join(', ') || 'not measured yet';
+  return `<div class="kpis">${kpi('Scans', num(st.scans,0))}${kpi('Events checked', num(st.events,0))}${kpi('Rough candidates', num(st.candidates,0))}${kpi('Confirmed on the book', num(st.confirmed,0))}${kpi('Leg risk', '', slip)}</div>
+  <div class="card" style="margin-top:14px"><h2>Gaps on the order books right now</h2><div class="note">Margin = guaranteed profit per set after fees, on the size shown. Ladders can also pay double.</div>${table(['_Event','Kind','Legs','Margin','Size','Profit','Resolves','Open for'], live, 'No profitable gaps at the moment: they are rare and close fast.')}</div>
+  <div class="card" style="margin-top:14px"><h2>Open sets</h2>${openTable(a.open,'arb')}</div>`;
+}
+function trades(){
+  const w = (X('weather').closed||[]).slice().reverse(), a = (X('arb').closed||[]).slice().reverse();
+  return `<div class="card"><h2>Weather trades</h2>${table(['_Market','Side','Cost','Result','Winner','Strategy','Closed'], w.map(c=>`<tr><td class="l">${esc(c.city)} ${esc(c.date)} · ${esc(c.bucket)} @ ${cents(c.price)} (model ${pct(c.p,0)})</td><td>${c.side}</td><td class="mono">${usd(c.cost)}</td><td class="mono ${cls(c.pnl)}">${sgn(c.pnl)}</td><td>${esc(c.winner||c.how)}</td><td>${esc(c.strategy)}</td><td>${tsg(c.closed_at,1)}</td></tr>`), 'No settled weather trades yet.')}</div>
+  <div class="card" style="margin-top:14px"><h2>Arbitrage sets</h2>${table(['_Set','Kind','Cost','Paid','Result','Fill','Closed'], a.map(c=>`<tr><td class="l">${esc(c.title)}</td><td>${esc(c.kind)}</td><td class="mono">${usd(c.cost)}</td><td class="mono">${usd(c.proceeds)}</td><td class="mono ${cls(c.pnl)}">${sgn(c.pnl)}</td><td>${esc(c.fill)}</td><td>${tsg(c.closed_at,1)}</td></tr>`), 'No settled sets yet.')}</div>`;
+}
+function journal(){
+  if(!D) return '<div class="empty">Loading…</div>';
+  const J = D.journal, f = ['all','discoveries','trades','days','experiments','problems'];
+  let items = [];
+  if(jf==='all'||jf==='discoveries') items = items.concat(J.discoveries.map(d=>({ts:d.ts, title:d.title, body:d.body, ev:d.evidence, tag:'discovery'})));
+  if(jf==='all'||jf==='trades') items = items.concat(J.trades.map(d=>({ts:d.ts, title:d.title+' '+sgn(d.pnl), body:d.body, ev:d.evidence, tag:d.desk})));
+  if(jf==='all'||jf==='days') items = items.concat(J.markets.map(d=>({ts:d.ts, title:d.title, body:d.body, ev:d.evidence, tag:'settled day'})));
+  if(jf==='all'||jf==='experiments') items = items.concat(J.experiments.map(d=>({ts:d.ts, title:d.desk+' · '+d.kind, body:d.body, ev:d.evidence, tag:'strategy'})));
+  if(jf==='problems') items = items.concat(J.integrity.map(d=>({ts:d.ts, title:d.kind, body:d.detail, ev:'event', tag:'data'})));
+  items.sort((a,b)=>b.ts-a.ts);
+  return `<div class="chips">${f.map(x=>`<button class="chip ${x===jf?'on':''}" data-f="${x}">${x}</button>`).join('')}</div>
+  ${items.slice(0,250).map(i=>`<div class="entry"><div class="meta"><b>${esc(i.title)}</b><span><span class="tag">${esc(i.tag)}</span> ${evb(i.ev)} ${tsg(i.ts,1)}</span></div>${esc(i.body)}</div>`).join('') || '<div class="empty">Nothing yet.</div>'}`;
+}
+function lab(){
+  if(!D) return '<div class="empty">Loading…</div>';
+  const t = rows => table(['Version','Status','_Rules','Open','Settled','Profit','ROI','90% low','7d ROI'], rows.map(v=>`<tr><td>${esc(v.id)}</td><td>${v.status==='champion'?'<span class="badge b-ok">champion</span>':esc(v.status)}</td><td class="l"><span class="note">${esc(v.note)}</span><br>${Object.entries(v.params).map(([k,x])=>`<span class="tag">${esc(k)} ${esc(x)}</span>`).join('')}</td><td class="mono">${v.open}</td><td class="mono">${v.score.n}</td><td class="mono ${cls(v.score.pnl)}">${sgn(v.score.pnl)}</td><td class="mono ${cls(v.score.roi)}">${pct(v.score.roi)}</td><td class="mono">${pct(v.score.roi_low)}</td><td class="mono">${pct(v.score_7d.roi)}</td></tr>`));
+  return `<div class="note" style="margin-bottom:10px">Every version trades every opportunity with virtual money on the real order book. A challenger becomes champion only when it beat the champion over the same period on profit and on return per dollar, with ${L.settings.min_trades_for_promotion}+ settled trades and a confidence interval above zero. Only the champion's trades go into the paper account.</div>
+  <div class="card"><h2>Weather strategy versions</h2>${t(D.weather.lab||[])}</div><div class="card" style="margin-top:14px"><h2>Arbitrage strategy versions</h2>${t(D.arb.lab||[])}</div>`;
+}
+function activity(){ return `<div class="card feed">${(L.activity||[]).slice().reverse().map(a=>`<div class="fr"><span class="t">${esc(a.time)}</span><span class="k-${esc(a.kind)}">${esc(a.text)}</span></div>`).join('')}</div>`; }
+function settings(){
+  return `<div class="card"><h2>Settings</h2><div class="note">Edit <span class="mono">pmx/settings.json</span> on GitHub; the bot re-reads it about every 10 minutes. Change <span class="mono">reset_token</span> to restart both paper accounts (what it learned is kept).</div>
+  <div class="kv" style="margin-top:10px">${Object.entries(L.settings).map(([k,v])=>`<div>${esc(k)}</div><div class="mono">${esc(v)}</div>`).join('')}</div></div>`;
+}
+function render(){
+  if(!L) return; header();
+  const f = {'Overview':overview,'Weather':weather,'Arbitrage':arb,'Trades':trades,'Learning Journal':journal,'Strategy Lab':lab,'Activity':activity,'Settings':settings}[page];
+  $('#main').innerHTML = f();
+  document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{jf=c.dataset.f; render();});
+}
+load(true); setInterval(()=>load(false), 60000);
+</script></body></html>

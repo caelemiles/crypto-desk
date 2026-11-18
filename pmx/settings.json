@@ -1,0 +1,20 @@
+{
+  "_help": "Settings for PMX (weather + arbitrage paper bots). Edit on GitHub and commit; re-read about every 10 minutes. Paper trading only: Polymarket does not take new orders from Singapore or the US, so there is no real-money setting. Change reset_token to restart both paper accounts (learning is kept).",
+  "reset_token": "1",
+  "weather_starting_balance": 1000,
+  "arb_starting_balance": 1000,
+  "max_stake_pct": 0.03,
+  "max_event_pct": 0.08,
+  "daily_loss_limit_pct": 0.10,
+  "liquidity_take_pct": 0.6,
+  "arb_max_set_pct": 0.15,
+  "arb_max_days": 10,
+  "max_challengers": 12,
+  "min_trades_for_promotion": 40,
+  "target_days": 14,
+  "target_weather_trades": 150,
+  "target_weather_roi": 0.08,
+  "target_arb_sets": 40,
+  "target_arb_profit": 20,
+  "target_max_drawdown": 0.25
+}
