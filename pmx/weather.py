@@ -20,7 +20,9 @@ LEADS = ("0", "1", "2")   # same day, next day, two or more days ahead
 # ------------------------------------------------------------------ parsing Polymarket weather events
 RE_TITLE = re.compile(r"highest temperature in (.+?) on ", re.I)
 RE_SLUGDATE = re.compile(r"-on-([a-z]+)-(\d{1,2})-(\d{4})")
-RE_ICAO = re.compile(r"wunderground\.com/history/daily/(?:[A-Za-z0-9\-]+/)*?([A-Z]{4})(?=[/?\s\"'.,)]|$)")
+RE_ICAO = [re.compile(r"aviationweather\.gov/api/data/metar\?ids=([A-Z0-9]{4})"),
+           re.compile(r"\b(?:Airport|Station|Aerodrome|Airfield)[^()\n]{0,40}\(([A-Z]{4})\)"),
+           re.compile(r"wunderground\.com/history/daily/(?:[A-Za-z0-9\-]+/)*?([A-Z]{4})(?=[/?\s\"'.,)]|$)")]
 RE_BETWEEN = re.compile(r"between\s+(-?\d+)\s*(?:-|to|–)\s*(-?\d+)\s*°?\s*([FC])", re.I)
 RE_BELOW = re.compile(r"(-?\d+)\s*°?\s*([FC])\s+or\s+(?:below|lower|less)", re.I)
 RE_ABOVE = re.compile(r"(-?\d+)\s*°?\s*([FC])\s+or\s+(?:higher|above|more)", re.I)
@@ -61,9 +63,13 @@ def parse_weather_event(ev):
         return None, "date not found in slug"
     date = f"{int(d.group(3)):04d}-{MONTHS[d.group(1)]:02d}-{int(d.group(2)):02d}"
     text = ev["description"] + " " + ev.get("resolution_source", "") + " " + " ".join(x["description"] for x in ev["markets"][:2])
-    st = RE_ICAO.search(text)
+    st = None
+    for rx in RE_ICAO:
+        st = rx.search(text)
+        if st:
+            break
     if not st:
-        return None, "resolution station is not a Weather Underground airport station"
+        return None, "could not find the airport station the market settles on"
     buckets, units = [], set()
     for mk in ev["markets"]:
         b = parse_bucket(mk["question"]) or parse_bucket(mk["group"])
@@ -90,13 +96,17 @@ def _label(lo, hi, u):
 
 # ------------------------------------------------------------------ data feeds
 def metar(station, hours=36):
-    """Observations: [(epoch, temp °C)] using the precise tenths group (T0256...) when the report has one."""
+    """Routine observations: [(epoch, temp °C)]. Polymarket settles on the highest hourly temperature remark
+    (T-group, tenths of °C) of routine METARs on the local date; SPECI reports do not count. Without a T-group
+    the whole-degree body temperature is used, exactly as the market rules say."""
     rows = K.http(f"{K.AWC}/metar?ids={station}&format=json&hours={hours}", timeout=12) or []
     out, lat, lon = [], None, None
     for r in rows:
         t = r.get("obsTime")
         temp = r.get("temp")
         raw = r.get("rawOb") or ""
+        if str(r.get("metarType") or "").upper() == "SPECI" or raw.startswith("SPECI"):
+            continue
         mt = re.search(r"\bT([01])(\d{3})[01]\d{3}\b", raw)
         if mt:
             temp = (-1 if mt.group(1) == "1" else 1) * int(mt.group(2)) / 10.0

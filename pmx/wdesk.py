@@ -63,7 +63,7 @@ class WeatherDesk:
     def discover(self, evs):
         n = 0
         for ev in evs:
-            if not W.is_weather(ev) or ev["closed"] or ev["slug"] in self.events:
+            if not W.is_weather(ev) or ev["closed"] or ev["slug"] in self.events or ev["slug"] in self.skipped:
                 continue
             info, why = W.parse_weather_event(ev)
             if not info:

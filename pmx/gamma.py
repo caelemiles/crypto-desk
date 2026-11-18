@@ -93,14 +93,34 @@ def parse_event(e):
     }
 
 
-def events(params, pages=1, limit=100, cursor=None):
-    """Events via Gamma's keyset endpoint (the old offset paging is rejected). Returns (events, next cursor)."""
+_PAGE = {"limit": 20, "order": True}   # Gamma answers 406 when a page is too big; learned at runtime
+
+
+def events(params, pages=1, limit=20, cursor=None):
+    """Events via Gamma's keyset endpoint (offset paging is rejected). Returns (events, next cursor).
+    Event records are large (20 events can be 400 KB), so pages are small; on HTTP 406 the page shrinks."""
     out = []
-    q = {k: v for k, v in params.items() if k != "active"} | {"limit": min(int(limit), 100)}
     for _ in range(pages):
-        if cursor:
-            q["after_cursor"] = cursor
-        d = K.http(f"{K.GAMMA}/events/keyset?{urllib.parse.urlencode(q)}", timeout=15) or {}
+        while True:
+            q = {k: v for k, v in params.items() if k != "active"}
+            if not _PAGE["order"]:
+                q.pop("order", None)
+                q.pop("ascending", None)
+            q["limit"] = min(int(limit), _PAGE["limit"])
+            if cursor:
+                q["after_cursor"] = cursor
+            try:
+                d = K.http(f"{K.GAMMA}/events/keyset?{urllib.parse.urlencode(q)}", timeout=20) or {}
+                break
+            except K.FetchError as e:
+                if "406" not in str(e):
+                    raise
+                if _PAGE["limit"] > 5:
+                    _PAGE["limit"] = max(5, _PAGE["limit"] // 2)
+                elif _PAGE["order"]:
+                    _PAGE["order"] = False
+                else:
+                    raise
         rows = d.get("events") if isinstance(d, dict) else d
         out.extend(parse_event(e) for e in rows or [])
         cursor = d.get("next_cursor") if isinstance(d, dict) else None

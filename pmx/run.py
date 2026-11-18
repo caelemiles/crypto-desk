@@ -99,7 +99,7 @@ class Controller:
             self.a.mark()
         if self.due("wdiscover"):
             try:
-                self.w.discover(G.events({"tag_slug": "weather", "closed": "false"}, pages=6)[0])
+                self.w.discover(G.events({"tag_slug": "weather", "closed": "false"}, pages=25)[0])
             except K.FetchError as e:
                 self.j.integrity_event("gamma", f"weather tag: {e}")
         if self.due("slugs"):
@@ -124,8 +124,8 @@ class Controller:
         base = {"closed": "false", "order": "volume24hr", "ascending": "false"}
         evs = []
         try:
-            top, _ = G.events(base, pages=2)                                    # the busiest events, every minute
-            more, cur = G.events(base, pages=3, cursor=self.a.cursor or None)   # plus a rotating slice of the rest
+            top, _ = G.events(base, pages=3)                                    # the busiest events, every minute
+            more, cur = G.events(base, pages=5, cursor=self.a.cursor or None)   # plus a rotating slice of the rest
             self.a.cursor = cur
             evs = top + more
         except K.FetchError as e:
