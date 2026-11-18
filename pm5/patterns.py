@@ -193,13 +193,14 @@ def launch_patterns(brain, rows_fn):
     room = brain.cfg["max_challengers"] - sum(1 for c in brain.s["challengers"].values() if c["status"] == "shadow")
     made = 0
     for r in pats:
-        if r["status"] != "tradable" or made >= max(room, 1) or made >= 2:
+        promising = r["status"] == "promising, not proven yet" and r["edge"] >= 0.04 and r["n"] >= 200
+        if (r["status"] != "tradable" and not promising) or made >= max(room, 1) or made >= 2:
             continue
         key = f"{r['feature']}@{r['t']}"
         if key in launched:
             continue
         launched.append(key)
-        delta = round(max(r["lo"], 0.5 * r["edge"]), 4)      # shrink: use the conservative effect size
+        delta = round(max(r["lo"] or 0.0, 0.5 * r["edge"]), 4)      # shrink: use the conservative effect size
         m = brain.add_model("pattern", {"feature": r["feature"], "dz": r["dz"], "delta": delta, "t": r["t"],
                                         "label": r["label"]},
                             note=f"Market price adjusted by '{r['label']}' (measured {r['edge'] * 100:+.1f} pts, n={r['n']})")

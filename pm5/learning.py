@@ -334,7 +334,7 @@ class Brain:
                     self.j.activity(f"Maker bid for {ro['side'].upper()} at ${ro['price']:.2f} cancelled: price never came to it",
                                     kind="order")
             elif not self.account.has_position(mkt["slug"]) and not w.get("champ_done"):
-                bankroll = self.account.equity()
+                bankroll = self.account.equity() * self.champion_size_factor()
                 order, reason = champ.decide(f, p, book, mkt, bankroll, self.cfg)
                 if order and order.get("maker") and not self._risk_block(now):
                     w["champ_order"] = {"status": "resting", "side": order["side"], "price": order["limit"],
@@ -510,6 +510,8 @@ class Brain:
                 led["pnl"][str(start)] = round(pnl, 5)
                 led["trades"] += 1
                 led["wins"] += pnl > 0
+                led["cost_sum"] = led.get("cost_sum", 0.0) + sp["cost"]
+                led["shares_sum"] = led.get("shares_sum", 0.0) + sp["shares"]
                 led["recent"] = (led["recent"] + [[start, round(pnl, 3), sp["side"], round(sp["prob"], 3)]])[-60:]
         # prediction evaluation
         champ = self.champion
@@ -667,12 +669,15 @@ class Brain:
         self._seed_v2()
         self._seed_v3()
         self._seed_v4()
+        self._seed_v5()
         champ = self.champion
         if not champ:
             return
         chal = [(sid, c) for sid, c in self.s["challengers"].items() if c["status"] == "shadow"]
         alpha = 0.05 / max(1, len(chal))
         champ_led = self.s["ledgers"][champ.id]
+        qualified = []
+        observing = bool(champ.rules.get("observe"))
         for sid, c in chal:
             led = self.s["ledgers"][sid]
             n = led["n_windows"]
@@ -691,15 +696,34 @@ class Brain:
             observing = bool(champ.rules.get("observe"))
             model_ok = observing or ll is None or ll["mean"] >= -0.002 or self.strats[sid].model_id == champ.model_id
             win_rate = led["wins"] / led["trades"] if led["trades"] else 0.0
-            c["test"]["win_rate"] = win_rate
-            win_ok = win_rate >= self.cfg.get("target_win_rate", 0.0)
+            # break-even win rate = average all-in price paid per share (fees included); must beat it by 2 points
+            breakeven = (led["cost_sum"] / led["shares_sum"]) if led.get("shares_sum") else None
+            c["test"].update({"win_rate": win_rate, "breakeven": breakeven})
+            win_ok = breakeven is None or win_rate >= breakeven + 0.02
             if enough and lo is not None and lo > 0 and c["test"]["pnl"] > 0 and model_ok and win_ok:
-                self._promote(sid, c, now)
-                return
+                qualified.append((win_rate >= self.cfg.get("target_win_rate", 0.8), mean, sid, c, False))
+            elif (observing and led["trades"] >= 100 and len(diffs) >= self.cfg["min_shadow_markets_for_promotion"]
+                  and c["test"]["pnl"] > 0 and win_ok):
+                plo, _, _ = boot_ci(diffs, alpha=0.10)
+                c["test"]["probation_lo"] = plo
+                if plo is not None and plo > 0:
+                    qualified.append((win_rate >= self.cfg.get("target_win_rate", 0.8), mean, sid, c, True))
             if len(diffs) >= self.cfg["min_shadow_markets_for_promotion"] and hi is not None and hi < 0:
                 self._retire(sid, c, "clearly worse than the champion (upper confidence bound below zero)")
+                continue
+            if observing and led["trades"] >= 60 and len(diffs) >= 150:
+                _, hi10, _ = boot_ci(diffs, alpha=0.10)
+                if hi10 is not None and hi10 < 0:
+                    self._retire(sid, c, "losing money (90% confident) - making room for better ideas")
             elif n > MAX_SHADOW_WINDOWS:
                 self._retire(sid, c, "could not prove an improvement within the test period")
+        if qualified:
+            # prefer strategies that also reach the win-rate goal, then the bigger profit per market
+            qualified.sort(key=lambda q: (q[0], q[1]), reverse=True)
+            _, _, sid, c, probation = qualified[0]
+            self._promote(sid, c, now, probation=probation)
+            return
+        self._graduate(now)
         self._propose(now, live_rows_fn)
         self._sync()
 
@@ -717,7 +741,28 @@ class Brain:
         lo, hi, mean = boot_ci(diffs, alpha=0.05)
         return {"n": len(diffs), "mean": mean, "lo": lo, "hi": hi}
 
-    def _promote(self, sid, c, now):
+    def _graduate(self, now):
+        """A probation champion becomes a full champion once its record is significant at the strict level."""
+        champ = self.champion
+        c = self.s["challengers"].get(champ.id, {}) if champ else {}
+        if not c.get("probation"):
+            return
+        hist = self.s["champion_history"]
+        since = hist[-1]["since"] if hist else 0
+        pnls = [t["pnl"] for t in self.account.closed if t.get("strategy") == champ.id and t.get("closed", 0) >= since]
+        if len(pnls) >= 60:
+            lo, _, mean = boot_ci(pnls, alpha=0.01)
+            if lo is not None and lo > 0:
+                c["probation"] = False
+                self.j.model_event(f"{champ.id} passes probation",
+                                   f"{len(pnls)} real paper trades since promotion, average {money(mean)} per trade "
+                                   f"(99% lower bound {money(lo)}). Stakes go back to full size.", {"sid": champ.id})
+
+    def champion_size_factor(self):
+        champ = self.champion
+        return 0.5 if champ and self.s["challengers"].get(champ.id, {}).get("probation") else 1.0
+
+    def _promote(self, sid, c, now, probation=False):
         old = self.champion
         new = self.strats[sid]
         t = c["test"]
@@ -727,16 +772,23 @@ class Brain:
             self.s["challengers"][k]["status"] = "retired"
         c["status"] = "champion"
         c["promoted"] = now
+        c["probation"] = probation
         self.s["champion"] = sid
         hist = self.s["champion_history"]
         if hist:
             hist[-1]["until"] = now
-        hist.append({"sid": sid, "model": new.model_id, "since": now, "reason": "won its forward test", "test": t,
-                     "version": len(hist) + 1})
+        hist.append({"sid": sid, "model": new.model_id, "since": now, "test": t, "version": len(hist) + 1,
+                     "reason": "on probation (half stakes): promising forward test" if probation else "won its forward test"})
         body = (f"{sid} beat {old.id} over {t['windows']} live markets it had never seen: shadow P&L {money(t['pnl'])} vs "
                 f"{money(t['champ_pnl'])} (mean {money(t['mean_diff'])}/market, lower bound {money(t['lo'])} at "
                 f"{(1 - t['alpha']):.1%} confidence). New rules: {new.describe()}; model: {self.models[new.model_id].describe()}.")
-        self.j.model_event(f"Version {len(hist)}: {sid} promoted to champion", body, {"sid": sid, "old": old.id})
+        if probation:
+            body = (f"{sid} made {money(t['pnl'])} in shadow over {t['windows']} markets and {t['trades']} trades "
+                    f"(win rate {t['win_rate']:.0%} vs break-even {t['breakeven']:.0%}). That clears a 90% confidence check "
+                    f"but not the strict one, so it trades the real paper account at HALF stakes on probation. "
+                    f"If its live record turns clearly negative it is stood down again. Rules: {new.describe()}.")
+        self.j.model_event(f"Version {len(hist)}: {sid} promoted to champion" + (" (probation)" if probation else ""), body,
+                           {"sid": sid, "old": old.id})
         self.j.experiment({"exp": c.get("exp"), "strategy": sid, "stage": "accepted", "title": f"{sid} accepted",
                            "result": body, "evidence": "measured"})
         self.j.activity(f"Model upgrade: {sid} replaces {old.id} as champion (kept {old.id} as backup)", kind="model")
@@ -869,6 +921,28 @@ class Brain:
                                    "title": f"{st.id}: {base.id} as maker orders", "goal": why, "change": st.describe(),
                                    "test": "Shadow-traded on live markets. Fills only when the market trades through the bid.",
                                    "evidence": "hypothesis", "origin": "day-2 review"})
+
+    def _seed_v5(self):
+        """Day-2 review, part 2: a calibrated model halfway between the bot's fair value and the market price
+        (the market was measured to be more accurate, so trust it more), traded selectively."""
+        if self.s["last"].get("seed_v5"):
+            return
+        self.s["last"]["seed_v5"] = time.time()
+        m = self.add_model("blend", {"wf": 0.5, "wm": 0.5, "b": 0.0, "needs_market": True},
+                           note="Halfway between the TWAP fair value and the market price (fixed weights, not fitted).")
+        ideas = [
+            ({"t_min": 120, "t_max": 285, "min_edge": 0.04, "min_prob": 0.55}, "Calibrated model, second half of the window"),
+            ({"t_min": 120, "t_max": 285, "min_edge": 0.03, "min_prob": 0.55, "order": "maker"},
+             "Calibrated model with maker orders (no fee)"),
+            ({"t_min": 120, "t_max": 280, "min_edge": 0.04, "min_prob": 0.75, "min_price": 0.55, "max_price": 0.75,
+              "order": "maker"}, "High win rate: calibrated favourites bought at 55-75c with maker orders"),
+        ]
+        for rules, why in ideas:
+            st = self.add_strategy(m.id, rules, note=why, origin="day-2 review", hypothesis=why)
+            self.j.experiment({"exp": f"E{self._nid('exp'):03d}", "strategy": st.id, "stage": "testing",
+                               "title": f"{st.id}: {why}", "goal": why + ". The market beat the fair-value model, so "
+                               "edges are only trusted halfway.", "change": st.describe(),
+                               "test": "Shadow-traded on live markets.", "evidence": "hypothesis", "origin": "day-2 review"})
 
     def _check_rollback(self, now):
         champ = self.champion
