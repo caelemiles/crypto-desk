@@ -125,7 +125,7 @@ class Controller:
         evs = []
         try:
             top, _ = G.events(base, pages=3)                                    # the busiest events, every minute
-            more, cur = G.events(base, pages=5, cursor=self.a.cursor or None)   # plus a rotating slice of the rest
+            more, cur = G.events(base, pages=8, cursor=self.a.cursor or None)   # plus a rotating slice of the rest
             self.a.cursor = cur
             evs = top + more
         except K.FetchError as e:

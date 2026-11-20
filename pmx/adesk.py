@@ -128,32 +128,42 @@ class ArbDesk:
         return m["yes_token"] if side == "YES" else m["no_token"]
 
     def price(self, c, books, take):
-        """Best size for a set on these books: shares, cost, profit, margin per set. None if not profitable."""
-        best = None
+        """Best size for a set on these books: shares, cost, profit, margin per set. None if not profitable
+        (the reason is counted, so the dashboard shows why rough candidates fail on the real book)."""
+        best, why = None, None
         mins = max(m["min_size"] for m, _ in c["legs"])
         for q in SIZES:
             if q < mins:
                 continue
-            cost, worst = 0.0, []
+            cost, worst, fees = 0.0, [], 0.0
             for m, side in c["legs"]:
                 bk = books.get(self._tok(m, side))
-                if not bk:
-                    return best
+                if not bk or not bk["asks"]:
+                    why = why or "a leg has no sellers"
+                    cost = None
+                    break
                 r = K.walk_cost(bk["asks"], q, take, m["fee_rate"], m["fee_exp"])
                 if not r:
+                    why = why or "not enough size on the book"
                     cost = None
                     break
                 cost += r["cost"]
                 worst.append(r["worst"])
+                fees += q * K.fee_per_share(r["avg"], m["fee_rate"], m["fee_exp"])
             if cost is None:
                 break
             profit = q * c["payout"] - cost
             margin = profit / q
             if margin <= 0:
+                if why is None:
+                    why = "fees eat the gap" if profit + fees > 0 else "real prices worse than the summary"
                 break
             if not best or profit > best["profit"]:
                 best = {"shares": q, "cost": round(cost, 4), "profit": round(profit, 4), "margin": round(margin, 5),
                         "worst": worst}
+        if not best and why:
+            k = "rough gap failed: " + why
+            self.reasons[k] = self.reasons.get(k, 0) + 1
         return best
 
     # ------------------------------------------------------------------ the scan
