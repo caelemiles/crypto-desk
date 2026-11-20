@@ -1,8 +1,8 @@
 {
- "generated": 1795157213901,
- "from": 1789973100000,
- "to": 1795157100000,
- "split": 1793947500000,
+ "generated": 1795178621016,
+ "from": 1789993800000,
+ "to": 1795177800000,
+ "split": 1793968200000,
  "coins": [
   "BONK",
   "BTC",
@@ -26,9 +26,9 @@
  },
  "fee": 0.001,
  "slip": 0.001,
- "tested": 2644,
- "seconds": 11.8,
- "summary": "Practice session: 2644 rule versions tested on 11 coins, 2 of 12 setups in the playbook (Breakdown short, VWAP loss short).",
+ "tested": 2637,
+ "seconds": 10.0,
+ "summary": "Practice session: 2637 rule versions tested on 11 coins, 2 of 12 setups in the playbook (Breakdown short, VWAP loss short).",
  "setups": [
   {
    "id": "pullback:long",
@@ -39,7 +39,7 @@
    "enabled": false,
    "genes": {
     "stop": 3.0,
-    "rr": 2.25,
+    "rr": 2.5,
     "hold": 20,
     "be": 1,
     "trend": 1,
@@ -48,16 +48,16 @@
     "rsiMax": 51,
     "touch": 3
    },
-   "ver": "6de5df08",
+   "ver": "89180f88",
    "train": {
     "n": 33,
-    "avgR": -0.129,
-    "pf": 0.72,
+    "avgR": -0.114,
+    "pf": 0.75,
     "win": 0.424,
-    "sumR": -4.25,
+    "sumR": -3.75,
     "h1": -0.275,
-    "h2": 0.009,
-    "t": -1.12
+    "h2": 0.038,
+    "t": -1.0
    },
    "val": {
     "n": 4,
@@ -66,20 +66,20 @@
     "win": 0.0,
     "sumR": -2.27
    },
-   "plain": "Buy when the 1h trend is up, price dips back to the 20-bar average within the last 3 bars, RSI is at most 51 and the candle closes back above the average during US hours (00-08 SGT). Stop 3 ATR away, target 2.25R, stop to breakeven at +1R, exit after 5h if neither is hit.",
-   "since": 1795157213901
+   "plain": "Buy when the 1h trend is up, price dips back to the 20-bar average within the last 3 bars, RSI is at most 51 and the candle closes back above the average during US hours (00-08 SGT). Stop 3 ATR away, target 2.5R, stop to breakeven at +1R, exit after 5h if neither is hit.",
+   "since": 1795178621016
   },
   {
    "id": "pullback:short",
    "setup": "pullback",
    "side": "short",
    "label": "Rally fade in a downtrend",
-   "tested": 213,
+   "tested": 216,
    "enabled": false,
    "genes": {
     "stop": 2.7,
     "rr": 3.25,
-    "hold": 48,
+    "hold": 44,
     "be": 0,
     "trend": 1,
     "btc": 0,
@@ -87,26 +87,26 @@
     "rsiMax": 51,
     "touch": 5
    },
-   "ver": "1f0a7434",
+   "ver": "f6afef80",
    "train": {
-    "n": 34,
-    "avgR": 0.174,
-    "pf": 1.31,
-    "win": 0.471,
-    "sumR": 5.93,
-    "h1": -0.127,
-    "h2": 0.476,
-    "t": 0.2
+    "n": 37,
+    "avgR": 0.068,
+    "pf": 1.11,
+    "win": 0.432,
+    "sumR": 2.5,
+    "h1": -0.205,
+    "h2": 0.326,
+    "t": -0.05
    },
    "val": {
-    "n": 18,
-    "avgR": -0.202,
+    "n": 16,
+    "avgR": -0.19,
     "pf": 0.75,
-    "win": 0.222,
-    "sumR": -3.64
+    "win": 0.25,
+    "sumR": -3.03
    },
-   "plain": "Sell short when the 1h trend is down, price dips back to the 20-bar average within the last 5 bars, RSI is at least 49 and the candle closes back below the average during Europe hours (16-24 SGT). Stop 2.7 ATR away, target 3.25R, exit after 12h if neither is hit.",
-   "since": 1795157213901
+   "plain": "Sell short when the 1h trend is down, price dips back to the 20-bar average within the last 5 bars, RSI is at least 49 and the candle closes back below the average during Europe hours (16-24 SGT). Stop 2.7 ATR away, target 3.25R, exit after 11h if neither is hit.",
+   "since": 1795178621016
   },
   {
    "id": "breakout:long",
@@ -118,41 +118,41 @@
    "genes": {
     "stop": 2.9,
     "rr": 3.25,
-    "hold": 48,
+    "hold": 44,
     "be": 0,
-    "trend": 0,
+    "trend": 1,
     "btc": 1,
     "sess": "us",
     "look": 96,
     "vol": 2.3
    },
-   "ver": "5c582486",
+   "ver": "08377dc0",
    "train": {
     "n": 31,
-    "avgR": -0.016,
+    "avgR": -0.015,
     "pf": 0.98,
-    "win": 0.323,
-    "sumR": -0.49,
-    "h1": 0.54,
-    "h2": -0.537,
-    "t": -0.87
+    "win": 0.355,
+    "sumR": -0.46,
+    "h1": 0.488,
+    "h2": -0.486,
+    "t": -0.77
    },
    "val": {
     "n": 7,
-    "avgR": -1.111,
+    "avgR": -0.969,
     "pf": 0.0,
     "win": 0.0,
-    "sumR": -7.78
+    "sumR": -6.78
    },
-   "plain": "Buy when price closes above the 96-bar (24h) high on 2.3x normal volume, only when BTC is trending up during US hours (00-08 SGT). Stop 2.9 ATR away, target 3.25R, exit after 12h if neither is hit.",
-   "since": 1795157213901
+   "plain": "Buy when price closes above the 96-bar (24h) high on 2.3x normal volume, only with the 1h trend up, only when BTC is trending up during US hours (00-08 SGT). Stop 2.9 ATR away, target 3.25R, exit after 11h if neither is hit.",
+   "since": 1795178621016
   },
   {
    "id": "breakout:short",
    "setup": "breakout",
    "side": "short",
    "label": "Breakdown",
-   "tested": 222,
+   "tested": 214,
    "enabled": true,
    "genes": {
     "stop": 2.5,
@@ -191,7 +191,7 @@
    "setup": "orb",
    "side": "long",
    "label": "Opening-range breakout",
-   "tested": 224,
+   "tested": 223,
    "enabled": false,
    "genes": {
     "stop": 3.0,
@@ -230,7 +230,7 @@
    "setup": "orb",
    "side": "short",
    "label": "Opening-range breakdown",
-   "tested": 226,
+   "tested": 230,
    "enabled": false,
    "genes": {
     "stop": 1.5,
@@ -252,14 +252,14 @@
     "sumR": 20.54,
     "h1": 0.124,
     "h2": 0.854,
-    "t": 1.62
+    "t": 1.31
    },
    "val": {
-    "n": 2,
-    "avgR": 1.159,
-    "pf": 2.89,
-    "win": 0.5,
-    "sumR": 2.32
+    "n": 7,
+    "avgR": -0.21,
+    "pf": 0.77,
+    "win": 0.286,
+    "sumR": -1.47
    },
    "plain": "Sell short when price breaks below the first hour's low (opening range, 08:00 SGT) within 2h of the open on 2.5x normal volume. Stop 1.5 ATR away, target 4R, exit after 8h if neither is hit.",
    "since": 1795070818937
@@ -269,7 +269,7 @@
    "setup": "vwap",
    "side": "long",
    "label": "VWAP reclaim",
-   "tested": 216,
+   "tested": 218,
    "enabled": false,
    "genes": {
     "stop": 1.9,
@@ -308,7 +308,7 @@
    "setup": "vwap",
    "side": "short",
    "label": "VWAP loss",
-   "tested": 225,
+   "tested": 226,
    "enabled": true,
    "genes": {
     "stop": 3.0,
@@ -347,7 +347,7 @@
    "setup": "sweep",
    "side": "long",
    "label": "Stop-hunt reversal at the lows",
-   "tested": 214,
+   "tested": 211,
    "enabled": false,
    "genes": {
     "stop": 1.7,
@@ -425,7 +425,7 @@
    "setup": "momentum",
    "side": "long",
    "label": "Momentum burst",
-   "tested": 223,
+   "tested": 215,
    "enabled": false,
    "genes": {
     "stop": 1.7,
@@ -465,11 +465,11 @@
    "setup": "momentum",
    "side": "short",
    "label": "Downside momentum burst",
-   "tested": 226,
+   "tested": 229,
    "enabled": false,
    "genes": {
-    "stop": 1.6,
-    "rr": 2.5,
+    "stop": 1.5,
+    "rr": 2.75,
     "hold": 8,
     "be": 0,
     "trend": 1,
@@ -479,29 +479,81 @@
     "move": 3.0,
     "vol": 2.1
    },
-   "ver": "915ace72",
+   "ver": "dab6ff05",
    "train": {
     "n": 54,
-    "avgR": 0.719,
-    "pf": 3.41,
-    "win": 0.778,
-    "sumR": 38.82,
-    "h1": 0.69,
-    "h2": 0.747,
-    "t": 2.81
+    "avgR": 0.775,
+    "pf": 3.35,
+    "win": 0.759,
+    "sumR": 41.87,
+    "h1": 0.767,
+    "h2": 0.784,
+    "t": 2.73
    },
    "val": {
     "n": 16,
-    "avgR": -0.346,
-    "pf": 0.6,
+    "avgR": -0.404,
+    "pf": 0.59,
     "win": 0.25,
-    "sumR": -5.54
+    "sumR": -6.47
    },
-   "plain": "Sell short when price has moved 3 ATR down in 2 bars on 2.1x volume, only with the 1h trend down during Europe hours (16-24 SGT). Stop 1.6 ATR away, target 2.5R, exit after 2h if neither is hit.",
-   "since": 1795157213901
+   "plain": "Sell short when price has moved 3 ATR down in 2 bars on 2.1x volume, only with the 1h trend down during Europe hours (16-24 SGT). Stop 1.5 ATR away, target 2.75R, exit after 2h if neither is hit.",
+   "since": 1795178621016
   }
  ],
  "notes": [
+  {
+   "t": 1795178621016,
+   "text": "Practice session: 2637 rule versions tested on 11 coins, 2 of 12 setups in the playbook (Breakdown short, VWAP loss short)."
+  },
+  {
+   "t": 1795178621016,
+   "text": "Trend pullback (long): not ready. Practised 221 versions; best practice version made -0.11R over 33 trades but -0.57R in the unseen week (4 trades). Keeps practising."
+  },
+  {
+   "t": 1795178621016,
+   "text": "Rally fade in a downtrend (short): not ready. Practised 216 versions; best practice version made +0.07R over 37 trades but -0.19R in the unseen week (16 trades). Keeps practising."
+  },
+  {
+   "t": 1795178621016,
+   "text": "Breakout (long): not ready. Practised 219 versions; best practice version made -0.01R over 31 trades but -0.97R in the unseen week (7 trades). Keeps practising."
+  },
+  {
+   "t": 1795178621016,
+   "text": "Breakdown (short): still works. Re-checked the current rules: unseen week 53 trades, +0.23R each. Keeping them."
+  },
+  {
+   "t": 1795178621016,
+   "text": "Opening-range breakout (long): not ready. Practised 223 versions; best practice version made +0.33R over 31 trades but +0.00R in the unseen week (0 trades). Keeps practising."
+  },
+  {
+   "t": 1795178621016,
+   "text": "Opening-range breakdown (short): not ready. Practised 230 versions; best practice version made +0.49R over 42 trades but -0.21R in the unseen week (7 trades). Keeps practising."
+  },
+  {
+   "t": 1795178621016,
+   "text": "VWAP reclaim (long): not ready. Practised 218 versions; best practice version made +0.19R over 37 trades but -1.22R in the unseen week (1 trades). Keeps practising."
+  },
+  {
+   "t": 1795178621016,
+   "text": "VWAP loss (short): still works. Re-checked the current rules: unseen week 26 trades, +0.33R each. Keeping them."
+  },
+  {
+   "t": 1795178621016,
+   "text": "Stop-hunt reversal at the lows (long): not ready. Practised 211 versions; best practice version made +0.48R over 40 trades but -0.46R in the unseen week (22 trades). Keeps practising."
+  },
+  {
+   "t": 1795178621016,
+   "text": "Stop-hunt reversal at the highs (short): not ready. Practised 215 versions; best practice version made +0.75R over 41 trades but +2.18R in the unseen week (5 trades). Keeps practising."
+  },
+  {
+   "t": 1795178621016,
+   "text": "Momentum burst (long): not ready. Practised 215 versions; best practice version made +0.02R over 39 trades but +0.09R in the unseen week (2 trades). Keeps practising."
+  },
+  {
+   "t": 1795178621016,
+   "text": "Downside momentum burst (short): not ready. Practised 229 versions; best practice version made +0.78R over 54 trades but -0.40R in the unseen week (16 trades). Keeps practising."
+  },
   {
    "t": 1795157213901,
    "text": "Practice session: 2644 rule versions tested on 11 coins, 2 of 12 setups in the playbook (Breakdown short, VWAP loss short)."
@@ -929,58 +981,6 @@
   {
    "t": 1794984372906,
    "text": "Rally fade in a downtrend (short): not ready. Practised 188 versions; best practice version made -0.12R over 259 trades but -0.07R in the unseen week (116 trades). Keeps practising."
-  },
-  {
-   "t": 1794984372906,
-   "text": "Breakout (long): not ready. Practised 216 versions; best practice version made -0.23R over 216 trades but -0.38R in the unseen week (69 trades). Keeps practising."
-  },
-  {
-   "t": 1794984372906,
-   "text": "Breakdown (short): found better rules. Practised 221 versions; the best made +0.32R per trade over 81 practice trades and +0.70R over 61 trades in the unseen week (win rate 38%). Updated the playbook."
-  },
-  {
-   "t": 1794984372906,
-   "text": "Opening-range breakout (long): not ready. Practised 211 versions; best practice version made +0.28R over 33 trades but -1.45R in the unseen week (1 trades). Keeps practising."
-  },
-  {
-   "t": 1794984372906,
-   "text": "Opening-range breakdown (short): not ready. Practised 218 versions; best practice version made +0.36R over 37 trades but +1.01R in the unseen week (2 trades). Keeps practising."
-  },
-  {
-   "t": 1794984372906,
-   "text": "VWAP reclaim (long): not ready. Practised 207 versions; best practice version made +0.04R over 43 trades but +0.00R in the unseen week (0 trades). Keeps practising."
-  },
-  {
-   "t": 1794984372906,
-   "text": "VWAP loss (short): not ready. Practised 206 versions; best practice version made +0.39R over 46 trades but +0.39R in the unseen week (26 trades). Keeps practising."
-  },
-  {
-   "t": 1794984372906,
-   "text": "Stop-hunt reversal at the lows (long): not ready. Practised 233 versions; best practice version made +0.34R over 35 trades but -0.32R in the unseen week (27 trades). Keeps practising."
-  },
-  {
-   "t": 1794984372906,
-   "text": "Stop-hunt reversal at the highs (short): not ready. Practised 220 versions; best practice version made +0.53R over 40 trades but +0.25R in the unseen week (6 trades). Keeps practising."
-  },
-  {
-   "t": 1794984372906,
-   "text": "Momentum burst (long): not ready. Practised 216 versions; best practice version made +0.02R over 37 trades but +0.24R in the unseen week (8 trades). Keeps practising."
-  },
-  {
-   "t": 1794984372906,
-   "text": "Downside momentum burst (short): still works. Re-checked the current rules: unseen week 32 trades, +0.53R each. Keeping them."
-  },
-  {
-   "t": 1794963173873,
-   "text": "Practice session: 2611 rule versions tested on 11 coins, 2 of 12 setups in the playbook (Breakdown short, Downside momentum burst short)."
-  },
-  {
-   "t": 1794963173873,
-   "text": "Trend pullback (long): not ready. Practised 209 versions; best practice version made -0.02R over 65 trades but -0.93R in the unseen week (10 trades). Keeps practising."
-  },
-  {
-   "t": 1794963173873,
-   "text": "Rally fade in a downtrend (short): not ready. Practised 213 versions; best practice version made -0.07R over 254 trades but -0.15R in the unseen week (125 trades). Keeps practising."
   }
  ]
 }
