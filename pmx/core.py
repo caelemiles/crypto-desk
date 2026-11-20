@@ -47,7 +47,7 @@ def http(url, data=None, timeout=10, retries=2):
 
 # ---------------------------------------------------------------- settings
 DEFAULTS = {
-    "reset_token": "1",
+    "reset_token": "2",
     "weather_starting_balance": 1000.0,
     "arb_starting_balance": 1000.0,
     "max_stake_pct": 0.03,            # weather: most of the account one bucket bet may use
@@ -56,7 +56,7 @@ DEFAULTS = {
     "daily_loss_limit_pct": 0.10,
     "liquidity_take_pct": 0.6,        # only take this share of the size shown in the book
     "arb_max_set_pct": 0.15,          # arbitrage: most of the account one set may use
-    "arb_max_days": 10,               # arbitrage: only lock money up for sets that resolve within this many days
+    "arb_max_days": 400,              # arbitrage: only lock money up for sets that resolve within this many days
     "max_challengers": 12,
     "min_trades_for_promotion": 40,
     # readiness gate ("target reached") - paper results a strategy must show
@@ -70,7 +70,7 @@ DEFAULTS = {
 LIMITS = {
     "weather_starting_balance": (10, 1_000_000), "arb_starting_balance": (10, 1_000_000),
     "max_stake_pct": (0.002, 0.10), "max_event_pct": (0.005, 0.3), "max_open_pct": (0.05, 1.0), "daily_loss_limit_pct": (0.01, 0.5),
-    "liquidity_take_pct": (0.1, 1.0), "arb_max_set_pct": (0.01, 0.5), "arb_max_days": (0.5, 60),
+    "liquidity_take_pct": (0.1, 1.0), "arb_max_set_pct": (0.01, 0.5), "arb_max_days": (0.5, 800),
     "max_challengers": (2, 30), "min_trades_for_promotion": (10, 1000), "target_days": (1, 365),
     "target_weather_trades": (10, 5000), "target_weather_roi": (0.0, 1.0), "target_arb_sets": (5, 5000),
     "target_arb_profit": (0, 1_000_000), "target_max_drawdown": (0.02, 0.9),

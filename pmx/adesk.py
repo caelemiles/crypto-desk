@@ -18,10 +18,13 @@ import core as K
 import gamma as G
 from lab import Lab
 
-SEED = {"min_margin": 0.01, "max_days": 7, "kinds": "all", "max_legs": 12, "min_profit": 0.25, "haircut": 1.0}
-SPACE = {"min_margin": [0.003, 0.005, 0.01, 0.015, 0.02, 0.03, 0.05], "max_days": [0.5, 1, 3, 7, 14, 30],
+LAB_VERSION = 2   # v2: long-dated sets allowed, judged by yearly return on the money locked up
+SEED = {"min_margin": 0.008, "max_days": 120, "kinds": "all", "max_legs": 12, "min_profit": 0.1, "haircut": 1.0,
+        "min_apr": 0.1}
+SPACE = {"min_margin": [0.003, 0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05], "max_days": [3, 14, 45, 120, 240, 400],
+         "min_apr": [0.0, 0.05, 0.1, 0.2, 0.4, 0.8],
          "kinds": ["all", "yes_set", "no_set", "ladder", "sets"], "max_legs": [2, 4, 8, 12, 20, 40],
-         "min_profit": [0.05, 0.25, 0.5, 1.0, 2.5], "haircut": [0.0, 0.5, 1.0, 1.5, 2.5]}
+         "min_profit": [0.02, 0.1, 0.25, 0.5, 1.0], "haircut": [0.0, 0.5, 1.0, 1.5, 2.5]}
 SIZES = [5, 10, 20, 35, 50, 75, 100, 150, 250, 400, 600, 1000, 1600, 2500]
 
 RE_LEVEL = re.compile(r"\b(above|over|greater than|higher than|at least|more than|below|under|less than|lower than)\s*"
@@ -47,7 +50,9 @@ class ArbDesk:
         d = d or {}
         self.j, self.s = journal, settings
         self.acct = K.Account(d.get("account"), settings["arb_starting_balance"])
-        self.lab = Lab(d.get("lab"), "arb", SEED, SPACE, journal, settings)
+        self.lab = Lab(d.get("lab") if d.get("lab_version") == LAB_VERSION else None, "arb", SEED, SPACE, journal, settings)
+        self.reasons = d.get("reasons", {})    # why confirmed gaps were not taken (so the rules can be checked)
+        self.watch = d.get("watch", {})        # event slug -> last time a gap was seen: re-checked every scan
         self.seen = d.get("seen", {})          # opportunity key -> {first, last, scans, best, kind, title}
         self.lifetimes = d.get("lifetimes", [])  # closed opportunities: [kind, minutes alive, scans, best margin]
         self.slips = d.get("slips", [])        # [kind, legs, planned margin, real margin] from leg-risk simulation
@@ -58,7 +63,8 @@ class ArbDesk:
         self.marks = {}
 
     def to_dict(self):
-        return {"account": self.acct.to_dict(), "lab": self.lab.to_dict(), "seen": self.seen,
+        return {"account": self.acct.to_dict(), "lab": self.lab.to_dict(), "lab_version": LAB_VERSION,
+                "reasons": self.reasons, "watch": self.watch, "seen": self.seen,
                 "lifetimes": self.lifetimes[-3000:], "slips": self.slips[-3000:], "held": self.held,
                 "stats": self.stats, "cursor": self.cursor}
 
@@ -166,6 +172,8 @@ class ArbDesk:
             if not plan:
                 continue
             found.add(c["key"])
+            self.watch[c["event"]] = t
+            plan["apr"] = (plan["margin"] / max(plan["cost"] / plan["shares"], 1e-6)) * 365 / max(c["days"], 0.25)
             self.stats["confirmed"] += 1
             bk = self.stats["by_kind"].setdefault(c["kind"], 0)
             self.stats["by_kind"][c["kind"]] = bk + 1
@@ -176,10 +184,20 @@ class ArbDesk:
             o["last"], o["scans"], o["best"] = t, o["scans"] + 1, max(o["best"], plan["margin"])
             self.live.append({"kind": c["kind"], "title": c["title"], "event": c["event"], "legs": len(c["legs"]),
                               "margin": plan["margin"], "shares": plan["shares"], "profit": plan["profit"],
-                              "days": round(c["days"], 2), "payout": c["payout"], "age_min": round((t - o["first"]) / 60, 1)})
-            takers = [v for v in self.lab.active() if self._wants(v["params"], c, plan, slip_need)
-                      and not self.lab.holds(v["id"], c["key"])]
+                              "days": round(c["days"], 2), "payout": c["payout"], "age_min": round((t - o["first"]) / 60, 1),
+                              "apr": round(plan["apr"], 3)})
+            takers, why = [], {}
+            for v in self.lab.active():
+                if self.lab.holds(v["id"], c["key"]):
+                    continue
+                ok, r = self._wants(v["params"], c, plan, slip_need)
+                if ok:
+                    takers.append(v)
+                else:
+                    why[r] = why.get(r, 0) + 1
             if not takers:
+                top = max(why, key=why.get) if why else "already held"
+                self.reasons[top] = self.reasons.get(top, 0) + 1
                 continue
             real = self._execute_sim(c, plan, books, take)
             for v in takers:
@@ -199,13 +217,21 @@ class ArbDesk:
 
     def _wants(self, P, c, plan, slip_need):
         if P["kinds"] == "sets" and c["kind"] == "ladder":
-            return False
+            return False, "kind not traded"
         if P["kinds"] not in ("all", "sets") and P["kinds"] != c["kind"]:
-            return False
-        if c["days"] > P["max_days"] or len(c["legs"]) > P["max_legs"]:
-            return False
+            return False, "kind not traded"
+        if c["days"] > P["max_days"]:
+            return False, "settles too far away"
+        if len(c["legs"]) > P["max_legs"]:
+            return False, "too many legs"
         need = P["min_margin"] + P["haircut"] * slip_need.get(c["kind"], 0.0) * max(1, len(c["legs"]) - 1)
-        return plan["margin"] >= need and plan["profit"] >= P["min_profit"]
+        if plan["margin"] < need:
+            return False, "margin too thin after leg risk"
+        if plan["profit"] < P["min_profit"]:
+            return False, "profit too small"
+        if plan["apr"] < P["min_apr"]:
+            return False, "yearly return too low"
+        return True, ""
 
     def _execute_sim(self, c, plan, books, take):
         """Leg risk: the first leg fills on the book we saw; the others on a fresh book read a moment later,

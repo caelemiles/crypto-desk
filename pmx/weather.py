@@ -199,9 +199,30 @@ class Calibration:
     def _samples(self, s, lead):
         return self.station(s)["samples"].get(lead, [])
 
+    # ---- pooled ("every city teaches every city") estimates, in °C ----
+    def _pool(self, lead):
+        """All stations' residuals for a lead, converted to °C. Recent samples only (seasons change)."""
+        out = []
+        for stn, st in self.st.items():
+            k = 1.8 if st.get("unit") == "F" else 1.0
+            for x in st["samples"].get(lead, [])[-30:]:
+                out.append({"r": x["r"] / k, "ev": x.get("ev", 0.0) / (k * k), "stn": stn})
+        return out
+
+    def global_bias_c(self, lead):
+        xs = [x["r"] for x in self._pool(lead)]
+        if len(xs) < 5 and lead == "2":     # nothing 2+ days ahead yet: next-day errors are the best guide
+            xs = [x["r"] for x in self._pool("1")]
+        return sum(xs) / (len(xs) + 3.0) if xs else 0.0
+
     def bias(self, s, lead):
-        xs = [x["r"] for x in self._samples(s, lead)]
-        return sum(xs) / (len(xs) + 4.0) if xs else 0.0   # shrunk towards zero until there is evidence
+        """Station bias, shrunk towards the bias seen across ALL stations (not towards zero): forecast models
+        predict hourly values and miss the short afternoon peak, so most stations run warm by a similar amount."""
+        st = self.station(s)
+        k = 1.8 if st.get("unit") == "F" else 1.0
+        g = self.global_bias_c(lead) * k
+        xs = [x["r"] for x in st["samples"].get(lead, [])]
+        return (sum(xs) + 5.0 * g) / (len(xs) + 5.0)
 
     def model_weights(self, s, lead):
         errs = {}
@@ -216,18 +237,48 @@ class Calibration:
         tot = sum(w.values())
         return {m: v / tot for m, v in w.items()}
 
-    def sigma(self, s, lead, unit):
-        """Extra spread (in the station's unit) so that past forecast errors would have been well calibrated."""
-        prior = DEFAULT_SIGMA_C[lead] * (1.8 if unit == "F" else 1.0)
-        xs = self._samples(s, lead)
+    def _sigma_c_from(self, xs, bias_c):
         if not xs:
-            return prior
-        b = self.bias(s, lead)
-        resid = sum((x["r"] - b) ** 2 for x in xs) / len(xs)
-        ens = sum(x.get("ev", 0.0) for x in xs) / len(xs)
-        est = math.sqrt(max(resid - ens, (0.35 * (1.8 if unit == "F" else 1.0)) ** 2))
-        k = 6.0
-        return math.sqrt((len(xs) * est ** 2 + k * prior ** 2) / (len(xs) + k))
+            return None
+        resid = sum((x["r"] - bias_c) ** 2 for x in xs) / len(xs)
+        ens = sum(x["ev"] for x in xs) / len(xs)
+        return math.sqrt(max(resid - ens, 0.35 ** 2))
+
+    def sigma(self, s, lead, unit):
+        """Extra spread (station's unit) so that past forecast errors would have been well calibrated.
+        Prior comes from all stations pooled, then the station's own errors take over as they build up."""
+        k = 1.8 if unit == "F" else 1.0
+        pool = self._pool(lead)
+        g = self._sigma_c_from(pool, self.global_bias_c(lead))
+        prior_c = DEFAULT_SIGMA_C[lead] if g is None else (len(pool) * g ** 2 + 8 * DEFAULT_SIGMA_C[lead] ** 2) / (len(pool) + 8)
+        prior_c = math.sqrt(prior_c) if g is not None else prior_c
+        mine = [{"r": x["r"] / k, "ev": x.get("ev", 0.0) / (k * k)} for x in self._samples(s, lead)]
+        est = self._sigma_c_from(mine, self.bias(s, lead) / k)
+        if est is None:
+            return prior_c * k
+        n, kk = len(mine), 6.0
+        return math.sqrt((n * est ** 2 + kk * prior_c ** 2) / (n + kk)) * k
+
+    # ---- how much to trust the model vs the market, learned from every settled bucket ----
+    def alpha(self, s=None):
+        """Weight on the model in  q = a*model + (1-a)*market  that would have scored best (Brier) on settled
+        buckets. Global first; a station's own history moves it once there is enough. Prior: trust the market."""
+        def best(rows):
+            if len(rows) < 40:
+                return None, len(rows)
+            scores = []
+            for i in range(0, 21):
+                a = i / 20
+                scores.append((sum((a * o + (1 - a) * m - y) ** 2 for o, m, y in rows) / len(rows), a))
+            return min(scores)[1], len(rows)
+        rows = [(b[5], b[6], b[7]) for b in self.brier if len(b) >= 8 and K.now() - b[0] < 45 * 86400]
+        g, n = best(rows)
+        g = 0.25 if g is None else (n * g + 200 * 0.25) / (n + 200)
+        if s is None:
+            return g
+        mine = [(b[5], b[6], b[7]) for b in self.brier if len(b) >= 8 and b[1] == s and K.now() - b[0] < 45 * 86400]
+        a, n = best(mine)
+        return g if a is None else (n * a + 150 * g) / (n + 150)
 
     def rounding(self, s):
         st = self.station(s)

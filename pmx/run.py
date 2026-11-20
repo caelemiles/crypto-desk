@@ -131,9 +131,19 @@ class Controller:
         except K.FetchError as e:
             self.a.cursor = None
             self.j.integrity_event("gamma", str(e))
-        uniq = {}
-        for e in evs:
-            uniq[e["slug"]] = e
+        uniq = {e["slug"]: e for e in evs}
+        now = K.now()
+        for slug, ts in list(self.a.watch.items()):     # events that had a gap lately: look again every minute
+            if now - ts > 3 * 3600:
+                self.a.watch.pop(slug, None)
+                continue
+            if slug not in uniq and len(uniq) < 400:
+                try:
+                    ev = G.event_by_slug(slug)
+                    if ev:
+                        uniq[slug] = ev
+                except K.FetchError:
+                    pass
         return list(uniq.values())
 
     def _gate(self):
@@ -168,7 +178,7 @@ class Controller:
                             "open": self.w.acct.positions, "live": self.w.live[:30], "counters": self.w.counters},
                 "arb": {"overview": self.overview(self.a), "readiness": R.arb(self.a, self.settings),
                         "open": self.a.acct.positions, "live": self.a.live, "stats": self.a.stats,
-                        "slip": self.a.learned_slip()},
+                        "slip": self.a.learned_slip(), "reasons": self.a.reasons},
                 "activity": self.j.feed[-120:], "settings": self.settings}
         self.pub.write("live.json", live)
         if full:
@@ -176,7 +186,7 @@ class Controller:
                 "weather": live["weather"] | {"closed": self.w.acct.closed[-400:], "curve": self.w.acct.curve[-3000:],
                                               "lab": self.w.lab.table(), "calibration": self.w.calibration_table(),
                                               "brier": self.w.last.get("brier", []), "blocked": self.w.blocked,
-                                              "samples": self.w.samples,
+                                              "samples": self.w.samples, "learned": self.w.last,
                                               "tracked": len(self.w.events)},
                 "arb": live["arb"] | {"closed": self.a.acct.closed[-400:], "curve": self.a.acct.curve[-3000:],
                                       "lab": self.a.lab.table(), "lifetimes": self.a.lifetimes[-300:],

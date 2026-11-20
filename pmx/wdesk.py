@@ -13,12 +13,13 @@ import gamma as G
 import weather as W
 from lab import Lab
 
-SEED = {"min_edge": 0.08, "min_prob": 0.05, "max_price": 0.65, "sides": "both", "max_lead": 1, "kelly": 0.2,
-        "exit_edge": 0.12, "max_spread_c": 3.0, "trust": 0.85, "city_filter": True, "max_disagree": 0.35}
+LAB_VERSION = 2   # v2: market-anchored probabilities (learned trust), pooled bias; old versions were judged on v1
+SEED = {"min_edge": 0.05, "min_prob": 0.1, "max_price": 0.75, "sides": "both", "max_lead": 1, "kelly": 0.15,
+        "exit_edge": 0.08, "max_spread_c": 3.0, "trust": 1.0, "city_filter": True, "max_disagree": 0.35}
 SPACE = {"min_edge": [0.03, 0.05, 0.08, 0.1, 0.13, 0.16, 0.2, 0.25], "min_prob": [0.0, 0.02, 0.05, 0.1, 0.2, 0.3, 0.45],
          "max_price": [0.12, 0.2, 0.3, 0.45, 0.65, 0.8, 0.92], "sides": ["yes", "both", "no"], "max_lead": [0, 1, 2],
          "kelly": [0.08, 0.12, 0.2, 0.3, 0.45], "exit_edge": [0.06, 0.12, 0.2, 0.35, 2.0],
-         "max_spread_c": [1.5, 2.0, 3.0, 4.0, 6.0, 99.0], "trust": [0.5, 0.65, 0.75, 0.85, 0.95, 1.0],
+         "max_spread_c": [1.5, 2.0, 3.0, 4.0, 6.0, 99.0], "trust": [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0],
          "city_filter": [True, False], "max_disagree": [0.15, 0.25, 0.35, 0.5, 0.7, 1.0]}
 
 CITY_SLUGS = ["nyc", "london", "chicago", "miami", "dallas", "atlanta", "seattle", "toronto", "seoul", "tokyo", "paris",
@@ -39,7 +40,12 @@ class WeatherDesk:
         d = d or {}
         self.j, self.s = journal, settings
         self.acct = K.Account(d.get("account"), settings["weather_starting_balance"])
-        self.lab = Lab(d.get("lab"), "weather", SEED, SPACE, journal, settings)
+        lab = d.get("lab") if d.get("lab_version") == LAB_VERSION else None
+        if d.get("lab") and lab is None:
+            journal.experiment({"desk": "weather", "kind": "reset", "evidence": "measured", "body":
+                                "Strategy lab restarted: the probability model changed (pooled bias, market-anchored "
+                                "trust), so old versions' results no longer describe how new versions would trade."})
+        self.lab = Lab(lab, "weather", SEED, SPACE, journal, settings)
         self.cal = W.Calibration(d.get("cal"))
         self.events = d.get("events", {})        # slug -> tracked event
         self.skipped = d.get("skipped", {})      # slug -> reason (so each is reported once)
@@ -54,7 +60,7 @@ class WeatherDesk:
         self.samples = d.get("samples", {})      # text of a few events it could not read (to fix the parser)
 
     def to_dict(self):
-        return {"account": self.acct.to_dict(), "lab": self.lab.to_dict(), "cal": self.cal.to_dict(),
+        return {"account": self.acct.to_dict(), "lab": self.lab.to_dict(), "lab_version": LAB_VERSION, "cal": self.cal.to_dict(),
                 "events": self.events, "skipped": dict(list(self.skipped.items())[-400:]), "stations": self.stations,
                 "blocked": self.blocked, "exited": {k: v for k, v in self.exited.items() if K.now() - v < 3 * 86400},
                 "last": self.last, "counters": self.counters, "samples": self.samples}
@@ -202,6 +208,7 @@ class WeatherDesk:
         B = self.s["weather_starting_balance"]
         champ = self.lab.champion
         sf = self.lab.size_factor()
+        alpha = self.cal.alpha(e["station"])
         event_spent = sum(p["cost"] for p in self.acct.positions if p.get("event") == e["slug"])
         for b, p in zip(e["buckets"], probs):
             ybook, nbook = books.get(b["yes"]), books.get(b["no"])
@@ -217,7 +224,8 @@ class WeatherDesk:
                 bid, ask = G.best(book)
                 for v in self.lab.active():
                     P = v["params"]
-                    q = P["trust"] * q_model + (1 - P["trust"]) * mkt
+                    a = min(1.0, alpha * P["trust"])
+                    q = a * q_model + (1 - a) * mkt
                     vid = v["id"]
                     if self.lab.holds(vid, key):
                         pos = v["open"][key]
@@ -327,7 +335,7 @@ class WeatherDesk:
         return {"slug": e["slug"], "city": e["city"], "date": e["date"], "station": e["station"], "unit": e["unit"],
                 "lead": fs["lead_n"], "forecast": round(fs["center"] + fs["bias"], 2), "bias": round(fs["bias"], 2),
                 "sigma": round(fs["sigma"], 2), "obs_max": fs["obs_max"], "models": {m: round(v, 1) for m, v in fs["models"].items()},
-                "blocked": self.blocked.get(e["station"]), "buckets": rows}
+                "blocked": self.blocked.get(e["station"]), "trust": round(self.cal.alpha(e["station"]), 2), "buckets": rows}
 
     # ------------------------------------------------------------------ settlement and learning
     def resolve(self):
@@ -382,7 +390,8 @@ class WeatherDesk:
             for i, (p, m) in enumerate(zip(bz["p"], bz["mkt"])):
                 if m is not None:
                     y = 1 if i == wi else 0
-                    self.cal.brier.append([round(t), e["station"], lead, round((p - y) ** 2, 5), round((m - y) ** 2, 5)])
+                    self.cal.brier.append([round(t), e["station"], lead, round((p - y) ** 2, 5), round((m - y) ** 2, 5),
+                                           round(p, 4), round(m, 4), y])
         st = self.cal.station(e["station"])
         self.j.market_entry({"kind": "weather", "title": f"{e['city']} {e['date']}: {win['label']} won",
                              "body": f"Settled on {e['station']}; METAR max {f2(metar_max)}°{e['unit']}. " + "; ".join(lines)
@@ -408,7 +417,7 @@ class WeatherDesk:
         """Every few hours: compare our accuracy with the market's per station, evolve the strategy versions."""
         t = K.now()
         by = {}
-        for ts, stn, lead, ours, mkt in self.cal.brier:
+        for ts, stn, lead, ours, mkt, *_ in self.cal.brier:
             if t - ts < 60 * 86400:
                 by.setdefault(stn, []).append((ours, mkt))
         summary = []
@@ -433,6 +442,18 @@ class WeatherDesk:
             self.j.discovery("Forecast accuracy vs the market", f"Over {len(tot)} buckets in 60 days our Brier score is "
                              f"{o:.4f} and the market's is {m:.4f} (lower is better): the model is "
                              f"{'better' if o < m else 'worse'} than the crowd.", "measured", key="brier-all")
+        gb = {lead: self.cal.global_bias_c(lead) for lead in W.LEADS}
+        self.last["global_bias_c"] = {k: round(v, 2) for k, v in gb.items()}
+        self.last["alpha"] = round(self.cal.alpha(), 3)
+        n_pool = len(self.cal._pool("0")) + len(self.cal._pool("1"))
+        if n_pool >= 10:
+            self.j.discovery("Forecast models run cold", f"Across all cities the actual daily high came in "
+                             f"{gb['0']:+.2f}°C (same day) / {gb['1']:+.2f}°C (next day) vs the models, from {n_pool} "
+                             "settled forecasts. Every station's bias starts from this and adjusts with its own record.",
+                             "measured", key="global-bias")
+        self.j.discovery("How much to trust the model", f"On settled buckets, mixing {self.last['alpha']:.0%} model with "
+                         f"{1 - self.last['alpha']:.0%} market price would have scored best; trades now use that mix "
+                         "(each city moves away from it as its own record grows).", "measured", key="alpha")
         for kind, text, evidence in self.lab.evolve():
             self.j.experiment({"desk": "weather", "kind": kind, "body": text, "evidence": evidence})
 

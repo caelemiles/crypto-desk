@@ -131,22 +131,25 @@ function weather(){
   const w = X('weather');
   const live = (w.live||[]).map(e=>{
     const rows = e.buckets.map(b=>{ const mid=(b.bid+b.ask)/2, edge=b.p-b.ask; return `<tr><td>${esc(b.label)}</td><td class="mono">${pct(b.p,1)}</td><td class="mono">${cents(b.bid)}</td><td class="mono">${cents(b.ask)}</td><td class="mono ${edge>0.05?'pos':''}">${edge>0?'+':''}${(edge*100).toFixed(1)}¢</td></tr>`; }).join('');
-    return `<div class="card"><h3>${esc(e.city)} · ${esc(e.date)} <span class="tag">${e.lead===0?'today':e.lead+'d ahead'}</span> <span class="tag">${esc(e.station)}</span>${e.blocked?'<span class="tag l">blocked</span>':''}</h3>
+    return `<div class="card"><h3>${esc(e.city)} · ${esc(e.date)} <span class="tag">${e.lead===0?'today':e.lead+'d ahead'}</span> <span class="tag">${esc(e.station)}</span><span class="tag">trust ${pct(e.trust,0)}</span>${e.blocked?'<span class="tag l">blocked</span>':''}</h3>
     <div class="note">Forecast max <b>${num(e.forecast,1)}°${e.unit}</b> ± ${num(e.sigma,1)} (learned bias ${e.bias>=0?'+':''}${num(e.bias,2)})${e.obs_max!=null?` · already observed <b>${num(e.obs_max,1)}°</b>`:''} · models ${Object.entries(e.models).map(([m,v])=>esc(m.replace('_seamless','').replace('_ifs025',''))+' '+v).join(', ')}</div>
     ${table(['Bucket','Model','Bid','Ask','Edge'], [rows])}</div>`; }).join('');
   const cal = (w.calibration||[]).map(r=>`<tr><td>${esc(r.station)}</td><td>°${esc(r.unit)}</td><td class="mono">${r.n0}/${r.n1}/${r.n2}</td><td class="mono">${r.bias0}/${r.bias1}/${r.bias2}</td><td class="mono">${r.sigma0}/${r.sigma1}/${r.sigma2}</td><td>${esc(r.rounding)}</td><td class="l">${Object.entries(r.weights).map(([m,v])=>esc(m.replace('_seamless','').replace('_ifs025',''))+' '+pct(v,0)).join(', ')}</td></tr>`);
   const br = (w.brier||[]).map(r=>`<tr><td>${esc(r.station)}</td><td class="mono">${r.n}</td><td class="mono ${r.ours<r.market?'pos':'neg'}">${r.ours}</td><td class="mono">${r.market}</td><td>${r.ours<r.market?'model':'market'}</td></tr>`);
-  return `<div class="card"><h2>Open weather bets</h2>${openTable(w.open,'weather')}</div>
+  const lr = w.learned||{}, gb = lr.global_bias_c||{};
+  return `<div class="card"><h2>What it has learned overall</h2><div class="note">Forecast models run <b>${gb['0']!=null?(gb['0']>=0?'+':'')+gb['0']:'?'}°C</b> (same day) / <b>${gb['1']!=null?(gb['1']>=0?'+':'')+gb['1']:'?'}°C</b> (next day) off the real airport high across all cities. Trust in the model vs the market price: <b>${lr.alpha!=null?pct(lr.alpha,0):'25% (starting value)'}</b> model, the rest market, learned from every settled bucket.</div></div>
+  <div class="card" style="margin-top:14px"><h2>Open weather bets</h2>${openTable(w.open,'weather')}</div>
   <h2 style="margin:16px 0 8px">Live: model vs market (${(w.live||[]).length} city-days)</h2><div class="grid g2e">${live||'<div class="empty">Waiting for the first weather scan.</div>'}</div>
   <div class="grid g2e" style="margin-top:14px"><div class="card"><h2>What it learned per station</h2><div class="note">Samples, bias and extra uncertainty for same day / next day / 2+ days ahead; model weights for next-day forecasts.</div>${table(['Station','Unit','Samples','Bias','Extra ±','Rounding','_Model weights'], cal, 'Learning starts when the first days settle.')}</div>
   <div class="card"><h2>Model vs market accuracy</h2><div class="note">Brier score of the bucket probabilities (lower is better), last 60 days.</div>${table(['Station','Buckets','Model','Market','Better'], br, 'Needs settled days.')}</div></div>`;
 }
 function arb(){
   const a = X('arb'), st = a.stats||{};
-  const live = (a.live||[]).map(x=>`<tr><td class="l">${esc(x.title)}</td><td>${esc(x.kind)}</td><td>${x.legs}</td><td class="mono pos">${(x.margin*100).toFixed(2)}¢</td><td class="mono">${num(x.shares,0)}</td><td class="mono pos">${usd(x.profit)}</td><td class="mono">${num(x.days,1)}d</td><td class="mono">${num(x.age_min,1)} min</td></tr>`);
+  const live = (a.live||[]).map(x=>`<tr><td class="l">${esc(x.title)}</td><td>${esc(x.kind)}</td><td>${x.legs}</td><td class="mono pos">${(x.margin*100).toFixed(2)}¢</td><td class="mono">${num(x.shares,0)}</td><td class="mono pos">${usd(x.profit)}</td><td class="mono">${num(x.days,1)}d</td><td class="mono">${pct(x.apr,0)}</td><td class="mono">${num(x.age_min,1)} min</td></tr>`);
   const slip = Object.entries(a.slip||{}).map(([k,v])=>`${esc(k)} ${(v*100).toFixed(2)}¢/leg`).join(', ') || 'not measured yet';
   return `<div class="kpis">${kpi('Scans', num(st.scans,0))}${kpi('Events checked', num(st.events,0))}${kpi('Rough candidates', num(st.candidates,0))}${kpi('Confirmed on the book', num(st.confirmed,0))}${kpi('Leg risk', '', slip)}</div>
-  <div class="card" style="margin-top:14px"><h2>Gaps on the order books right now</h2><div class="note">Margin = guaranteed profit per set after fees, on the size shown. Ladders can also pay double.</div>${table(['_Event','Kind','Legs','Margin','Size','Profit','Resolves','Open for'], live, 'No profitable gaps at the moment: they are rare and close fast.')}</div>
+  <div class="card" style="margin-top:14px"><h2>Why gaps were skipped</h2><div class="note">${Object.entries(a.reasons||{}).sort((x,y)=>y[1]-x[1]).map(([k,v])=>esc(k)+': '+v).join(' · ') || 'None skipped yet.'}</div></div>
+  <div class="card" style="margin-top:14px"><h2>Gaps on the order books right now</h2><div class="note">Margin = guaranteed profit per set after fees, on the size shown. Ladders can also pay double.</div>${table(['_Event','Kind','Legs','Margin','Size','Profit','Resolves','Per year','Open for'], live, 'No profitable gaps at the moment: they are rare and close fast.')}</div>
   <div class="card" style="margin-top:14px"><h2>Open sets</h2>${openTable(a.open,'arb')}</div>`;
 }
 function trades(){
