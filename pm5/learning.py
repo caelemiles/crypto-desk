@@ -670,6 +670,7 @@ class Brain:
         self._seed_v3()
         self._seed_v4()
         self._seed_v5()
+        self._seed_v6()
         champ = self.champion
         if not champ:
             return
@@ -702,9 +703,11 @@ class Brain:
             win_ok = breakeven is None or win_rate >= breakeven + 0.02
             if enough and lo is not None and lo > 0 and c["test"]["pnl"] > 0 and model_ok and win_ok:
                 qualified.append((win_rate >= self.cfg.get("target_win_rate", 0.8), mean, sid, c, False))
-            elif (observing and led["trades"] >= 100 and len(diffs) >= self.cfg["min_shadow_markets_for_promotion"]
+            elif (observing and led["trades"] >= 150 and len(diffs) >= self.cfg["min_shadow_markets_for_promotion"]
                   and c["test"]["pnl"] > 0 and win_ok):
-                plo, _, _ = boot_ci(diffs, alpha=0.10)
+                # measured: two probation picks at a plain 90% check lost money live (with ~12 ideas competing, one
+                # will look good by luck). So the check is corrected for the number of ideas being tested.
+                plo, _, _ = boot_ci(diffs, alpha=0.10 / max(1, len(chal)))
                 c["test"]["probation_lo"] = plo
                 if plo is not None and plo > 0:
                     qualified.append((win_rate >= self.cfg.get("target_win_rate", 0.8), mean, sid, c, True))
@@ -943,6 +946,26 @@ class Brain:
                                "title": f"{st.id}: {why}", "goal": why + ". The market beat the fair-value model, so "
                                "edges are only trusted halfway.", "change": st.describe(),
                                "test": "Shadow-traded on live markets.", "evidence": "hypothesis", "origin": "day-2 review"})
+
+    def _seed_v6(self):
+        """Measured: pattern strategies placed as taker orders never traded (the pattern's edge, ~2 points, is
+        smaller than fee + spread). Re-launch them as maker orders, which pay no fee and buy at the bid."""
+        if self.s["last"].get("seed_v6"):
+            return
+        self.s["last"]["seed_v6"] = time.time()
+        for sid, c in list(self.s["challengers"].items()):
+            st = self.strats.get(sid)
+            led = self.s["ledgers"].get(sid, {})
+            if (c["status"] == "shadow" and st and c.get("origin") == "pattern mining"
+                    and st.rules.get("order", "taker") == "taker" and led.get("trades", 0) == 0):
+                self._retire(sid, c, "never traded: the pattern's edge is smaller than the taker fee + spread")
+                new = self.add_strategy(st.model_id, dict(st.rules) | {"order": "maker"}, parent=sid,
+                                        note=st.note.replace("pattern strategy", "pattern (maker)"), origin="pattern mining",
+                                        hypothesis=c.get("hypothesis"))
+                self.j.experiment({"exp": f"E{self._nid('exp'):03d}", "strategy": new.id, "stage": "testing",
+                                   "title": f"{new.id}: {sid} re-run as maker orders", "change": new.describe(),
+                                   "goal": "Let a small measured pattern be tested without paying the fee.",
+                                   "test": "Shadow-traded on live markets.", "evidence": "hypothesis", "origin": "pattern mining"})
 
     def _check_rollback(self, now):
         champ = self.champion

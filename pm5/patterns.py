@@ -204,8 +204,9 @@ def launch_patterns(brain, rows_fn):
         m = brain.add_model("pattern", {"feature": r["feature"], "dz": r["dz"], "delta": delta, "t": r["t"],
                                         "label": r["label"]},
                             note=f"Market price adjusted by '{r['label']}' (measured {r['edge'] * 100:+.1f} pts, n={r['n']})")
+        # maker orders: a pattern worth ~2 points cannot pay a ~2c taker fee plus the spread
         rules = {"t_min": max(5, r["t"] - 20), "t_max": min(292, r["t"] + 25), "min_edge": 0.01, "min_prob": 0.5,
-                 "min_price": 0.15, "max_price": 0.85}
+                 "min_price": 0.15, "max_price": 0.85, "order": "maker"}
         base = brain._base_strategy() or brain.champion
         brain._launch(base, m.id, rules, f"Pattern: when {r['label']} is strong at {r['t']}s the market under-reacts "
                                          f"(measured {r['edge'] * 100:+.1f} pts vs price, n={r['n']}).",
