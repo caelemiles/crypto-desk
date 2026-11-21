@@ -82,3 +82,11 @@
 16:08:20 [00:08:20] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 11:10AM-11:15AM ET
 16:09:56 [00:09:56] Opportunity rejected: no side had enough edge after fees
 16:10:05 [00:10:05] Collecting market data (order book, Chainlink, Binance, futures)
+16:10:16 [00:10:16] Placed a maker bid: UP at $0.55 (model 59%, no fee if filled)
+16:10:19 [00:10:19] Market resolved DOWN: btc-updown-5m-1795276800 (TWAP 59,828.71 -> 59,770.43)
+16:10:19 [00:10:19] Comparing prediction with actual outcome
+16:10:19 [00:10:19] Prediction DOWN at 150s was correct
+16:10:19 [00:10:19] Updating learning dataset
+16:10:19 [00:10:19] Explained why the market went DOWN (see Market explanations)
+16:11:01 [00:11:01] Maker bid for UP at $0.55 cancelled: price never came to it
+16:11:01 [00:11:01] Analysing order-book imbalance: Polymarket -0.81, Binance +0.15
