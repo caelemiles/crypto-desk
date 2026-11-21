@@ -76,3 +76,5 @@
 16:05:35 [00:05:35] Prediction DOWN at 150s was correct
 16:05:35 [00:05:35] Updating learning dataset
 16:05:35 [00:05:35] Explained why the market went DOWN (see Market explanations)
+16:06:00 [00:06:00] Maker bid for DOWN at $0.53 cancelled: price never came to it
+16:06:00 [00:06:00] Analysing order-book imbalance: Polymarket -0.04, Binance +0.36
