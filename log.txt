@@ -426,3 +426,9 @@
 18:49:56 [02:49:56] Opportunity rejected: no side had enough edge after fees
 18:50:06 [02:50:06] Collecting market data (order book, Chainlink, Binance, futures)
 18:50:16 [02:50:16] Testing potential improvement E067 as S036: maker_offset 0.0 -> 0.02; min_edge 0.01 -> 0.05
+18:50:42 [02:50:42] Market resolved DOWN: btc-updown-5m-1795286400 (TWAP 60,113.97 -> 60,059.98)
+18:50:42 [02:50:42] Comparing prediction with actual outcome
+18:50:42 [02:50:42] Prediction DOWN at 150s was correct
+18:50:42 [02:50:42] Updating learning dataset
+18:50:42 [02:50:42] Explained why the market went DOWN (see Market explanations)
+18:51:01 [02:51:01] Analysing order-book imbalance: Polymarket +0.58, Binance -0.00
