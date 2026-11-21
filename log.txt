@@ -222,3 +222,5 @@
 17:10:25 [01:10:25] Comparing prediction with actual outcome
 17:10:25 [01:10:25] Updating learning dataset
 17:10:25 [01:10:25] Explained why the market went UP (see Market explanations)
+17:11:00 [01:11:00] Maker bid for UP at $0.63 cancelled: price never came to it
+17:11:00 [01:11:00] Analysing order-book imbalance: Polymarket +0.40, Binance +0.27
