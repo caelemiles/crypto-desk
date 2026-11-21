@@ -122,3 +122,5 @@
 16:25:17 [00:25:17] Prediction UP at 150s was correct
 16:25:17 [00:25:17] Updating learning dataset
 16:25:17 [00:25:17] Explained why the market went UP (see Market explanations)
+16:25:35 [00:25:35] Simulated trade T00329: maker bid filled, 12.21 UP @ $0.550, no fee (model 58%)
+16:26:00 [00:26:00] Analysing order-book imbalance: Polymarket +0.55, Binance +0.11
