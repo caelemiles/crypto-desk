@@ -1,0 +1,70 @@
+15:32:25 [23:32:25] Controller started (run 44918861023); settings from github; paper trading only
+15:32:29 [23:32:29] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 10:30AM-10:35AM ET
+15:32:29 [23:32:29] Collecting market data (order book, Chainlink, Binance, futures)
+15:32:29 [23:32:29] Analysing order-book imbalance: Polymarket -0.53, Binance -0.50
+15:32:33 [23:32:33] Generating prediction: DOWN (P(up) 12%, market 12%)
+15:33:20 [23:33:20] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 10:35AM-10:40AM ET
+15:34:57 [23:34:57] Opportunity rejected: risk limit: daily loss limit reached
+15:35:05 [23:35:05] Collecting market data (order book, Chainlink, Binance, futures)
+15:35:18 [23:35:18] Market resolved DOWN: btc-updown-5m-1795274700
+15:35:18 [23:35:18] Comparing prediction with actual outcome
+15:35:18 [23:35:18] Prediction DOWN at 150s was correct
+15:35:18 [23:35:18] Updating learning dataset
+15:35:18 [23:35:18] Explained why the market went DOWN (see Market explanations)
+15:36:01 [23:36:01] Analysing order-book imbalance: Polymarket +0.25, Binance -0.00
+15:37:30 [23:37:30] Generating prediction: UP (P(up) 82%, market 84%)
+15:38:20 [23:38:20] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 10:40AM-10:45AM ET
+15:39:57 [23:39:57] Opportunity rejected: risk limit: daily loss limit reached
+15:40:06 [23:40:06] Collecting market data (order book, Chainlink, Binance, futures)
+15:40:09 [23:40:09] Market resolved DOWN: btc-updown-5m-1795275000 (TWAP 59,885.82 -> 59,728.47)
+15:40:09 [23:40:09] Comparing prediction with actual outcome
+15:40:09 [23:40:09] Prediction DOWN at 150s was correct
+15:40:09 [23:40:09] Updating learning dataset
+15:40:09 [23:40:09] Explained why the market went DOWN (see Market explanations)
+15:40:23 [23:40:23] Testing potential model improvements (retraining candidates on recorded data)
+15:41:01 [23:41:01] Analysing order-book imbalance: Polymarket -0.78, Binance -0.29
+15:42:32 [23:42:32] Generating prediction: UP (P(up) 88%, market 88%)
+15:43:21 [23:43:21] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 10:45AM-10:50AM ET
+15:44:56 [23:44:56] Opportunity rejected: risk limit: daily loss limit reached
+15:45:06 [23:45:06] Collecting market data (order book, Chainlink, Binance, futures)
+15:45:11 [23:45:11] Market resolved UP: btc-updown-5m-1795275300 (TWAP 59,724.83 -> 59,743.70)
+15:45:11 [23:45:11] Comparing prediction with actual outcome
+15:45:11 [23:45:11] Prediction UP at 150s was correct
+15:45:11 [23:45:11] Updating learning dataset
+15:45:11 [23:45:11] Explained why the market went UP (see Market explanations)
+15:46:00 [23:46:00] Analysing order-book imbalance: Polymarket -0.60, Binance +0.03
+15:47:31 [23:47:31] Generating prediction: DOWN (P(up) 33%, market 36%)
+15:48:21 [23:48:21] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 10:50AM-10:55AM ET
+15:49:55 [23:49:55] Opportunity rejected: risk limit: daily loss limit reached
+15:50:06 [23:50:06] Collecting market data (order book, Chainlink, Binance, futures)
+15:50:19 [23:50:19] Market resolved UP: btc-updown-5m-1795275600 (TWAP 59,746.42 -> 59,953.39)
+15:50:19 [23:50:19] Comparing prediction with actual outcome
+15:50:19 [23:50:19] Prediction UP at 150s was correct
+15:50:19 [23:50:19] Updating learning dataset
+15:50:19 [23:50:19] Explained why the market went UP (see Market explanations)
+15:51:00 [23:51:00] Analysing order-book imbalance: Polymarket -0.04, Binance +0.48
+15:52:30 [23:52:30] Generating prediction: DOWN (P(up) 8%, market 10%)
+15:53:20 [23:53:20] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 10:55AM-11:00AM ET
+15:54:56 [23:54:56] Opportunity rejected: risk limit: daily loss limit reached
+15:55:05 [23:55:05] Collecting market data (order book, Chainlink, Binance, futures)
+15:55:38 [23:55:38] Market resolved DOWN: btc-updown-5m-1795275900 (TWAP 60,042.81 -> 59,921.08)
+15:55:38 [23:55:38] Comparing prediction with actual outcome
+15:55:38 [23:55:38] Prediction DOWN at 150s was correct
+15:55:38 [23:55:38] Updating learning dataset
+15:55:38 [23:55:38] Explained why the market went DOWN (see Market explanations)
+15:56:01 [23:56:01] Analysing order-book imbalance: Polymarket -0.35, Binance -0.28
+15:57:30 [23:57:30] Generating prediction: DOWN (P(up) 11%, market 14%)
+15:58:20 [23:58:20] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 11:00AM-11:05AM ET
+15:59:55 [23:59:55] Opportunity rejected: risk limit: daily loss limit reached
+16:00:01 [00:00:01] Daily learning report for 2026-11-21 written: 178 trades, P&L -$61.44
+16:00:06 [00:00:06] Collecting market data (order book, Chainlink, Binance, futures)
+16:00:10 [00:00:10] Placed a maker bid: UP at $0.58 (model 61%, no fee if filled)
+16:00:26 [00:00:26] Market resolved DOWN: btc-updown-5m-1795276200 (TWAP 59,936.04 -> 59,826.91)
+16:00:26 [00:00:26] Comparing prediction with actual outcome
+16:00:26 [00:00:26] Prediction DOWN at 150s was correct
+16:00:26 [00:00:26] Updating learning dataset
+16:00:26 [00:00:26] Explained why the market went DOWN (see Market explanations)
+16:00:41 [00:00:41] Simulated trade T00326: maker bid filled, 12.55 UP @ $0.580, no fee (model 61%)
+16:01:00 [00:01:00] Analysing order-book imbalance: Polymarket +0.36, Binance +0.33
+16:02:31 [00:02:31] Generating prediction: DOWN (P(up) 45%, market 45%)
+16:03:20 [00:03:20] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 11:05AM-11:10AM ET
