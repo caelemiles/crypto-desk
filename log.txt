@@ -191,3 +191,5 @@
 16:55:11 [00:55:11] Explained why the market went UP (see Market explanations)
 16:55:16 [00:55:16] Simulated trade T00334: maker bid filled, 13.06 UP @ $0.630, no fee (model 66%)
 16:56:00 [00:56:00] Analysing order-book imbalance: Polymarket +0.58, Binance +0.38
+16:57:31 [00:57:31] Generating prediction: DOWN (P(up) 18%, market 21%)
+16:58:21 [00:58:21] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 12:00PM-12:05PM ET
