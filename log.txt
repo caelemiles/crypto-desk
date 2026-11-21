@@ -412,3 +412,4 @@
 18:40:23 [02:40:23] Explained why the market went DOWN (see Market explanations)
 18:40:25 [02:40:25] Testing potential model improvements (retraining candidates on recorded data)
 18:41:00 [02:41:00] Analysing order-book imbalance: Polymarket +0.30, Binance -0.25
+18:42:30 [02:42:30] Generating prediction: DOWN (P(up) 9%, market 9%)
