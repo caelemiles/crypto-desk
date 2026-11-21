@@ -9,3 +9,10 @@
 18:16:00 [02:16:00] Analysing order-book imbalance: Polymarket -0.30, Binance -0.10
 18:17:31 [02:17:31] Generating prediction: UP (P(up) 86%, market 86%)
 18:18:21 [02:18:21] New ETH five-minute market detected: Ethereum Up or Down - November 21, 1:20PM-1:25PM ET
+18:19:58 [02:19:58] Opportunity rejected: no side had enough edge after fees
+18:20:05 [02:20:05] Collecting market data (order book, Chainlink, Binance, futures)
+18:20:10 [02:20:10] Market resolved DOWN: eth-updown-5m-1795284600
+18:20:10 [02:20:10] Comparing prediction with actual outcome
+18:20:10 [02:20:10] Prediction DOWN at 150s was correct
+18:20:10 [02:20:10] Updating learning dataset
+18:20:10 [02:20:10] Explained why the market went DOWN (see Market explanations)
