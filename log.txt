@@ -423,3 +423,6 @@
 18:46:01 [02:46:01] Analysing order-book imbalance: Polymarket -0.45, Binance -0.30
 18:47:31 [02:47:31] Generating prediction: NO CALL (P(up) 54%, market 54%)
 18:48:21 [02:48:21] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 1:50PM-1:55PM ET
+18:49:56 [02:49:56] Opportunity rejected: no side had enough edge after fees
+18:50:06 [02:50:06] Collecting market data (order book, Chainlink, Binance, futures)
+18:50:16 [02:50:16] Testing potential improvement E067 as S036: maker_offset 0.0 -> 0.02; min_edge 0.01 -> 0.05
