@@ -46,3 +46,4 @@
 18:35:06 [02:35:06] Updating learning dataset
 18:35:06 [02:35:06] Explained why the market went UP (see Market explanations)
 18:35:08 [02:35:08] Collecting market data (order book, Chainlink, Binance, futures)
+18:36:00 [02:36:00] Analysing order-book imbalance: Polymarket -0.16, Binance +0.04
