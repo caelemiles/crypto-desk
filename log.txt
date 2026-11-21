@@ -268,3 +268,4 @@
 17:29:56 [01:29:56] Opportunity rejected: no side had enough edge after fees
 17:30:06 [01:30:06] Collecting market data (order book, Chainlink, Binance, futures)
 17:31:00 [01:31:00] Analysing order-book imbalance: Polymarket +0.69, Binance +0.53
+17:32:31 [01:32:31] Generating prediction: DOWN (P(up) 2%, market 2%)
