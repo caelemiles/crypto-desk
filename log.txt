@@ -146,3 +146,5 @@
 16:35:31 [00:35:31] Placed a maker bid: DOWN at $0.63 (model 66%, no fee if filled)
 16:35:36 [00:35:36] Simulated trade T00331: maker bid filled, 13.00 DOWN @ $0.630, no fee (model 66%)
 16:36:01 [00:36:01] Analysing order-book imbalance: Polymarket +0.53, Binance +0.23
+16:37:31 [00:37:31] Generating prediction: DOWN (P(up) 3%, market 6%)
+16:38:20 [00:38:20] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 11:40AM-11:45AM ET
