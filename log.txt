@@ -25,3 +25,5 @@
 18:23:36 [02:23:36] Updating learning dataset
 18:23:36 [02:23:36] Explained why the market went UP (see Market explanations)
 18:24:57 [02:24:57] Opportunity rejected: no side had enough edge after fees
+18:25:06 [02:25:06] Collecting market data (order book, Chainlink, Binance, futures)
+18:26:02 [02:26:02] Analysing order-book imbalance: Polymarket -0.34, Binance +0.10
