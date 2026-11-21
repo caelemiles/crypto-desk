@@ -63,3 +63,4 @@
 18:42:46 [02:42:46] Prediction UP at 150s was correct
 18:42:46 [02:42:46] Updating learning dataset
 18:42:46 [02:42:46] Explained why the market went UP (see Market explanations)
+18:43:20 [02:43:20] New ETH five-minute market detected: Ethereum Up or Down - November 21, 1:45PM-1:50PM ET
