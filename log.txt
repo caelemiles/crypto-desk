@@ -257,3 +257,4 @@
 17:25:39 [01:25:39] Prediction DOWN at 150s was correct
 17:25:39 [01:25:39] Updating learning dataset
 17:25:39 [01:25:39] Explained why the market went DOWN (see Market explanations)
+17:26:01 [01:26:01] Analysing order-book imbalance: Polymarket +0.41, Binance -0.01
