@@ -190,3 +190,4 @@
 16:55:11 [00:55:11] Updating learning dataset
 16:55:11 [00:55:11] Explained why the market went UP (see Market explanations)
 16:55:16 [00:55:16] Simulated trade T00334: maker bid filled, 13.06 UP @ $0.630, no fee (model 66%)
+16:56:00 [00:56:00] Analysing order-book imbalance: Polymarket +0.58, Binance +0.38
