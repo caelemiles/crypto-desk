@@ -300,3 +300,4 @@
 17:45:23 [01:45:23] Testing potential improvement E064 as S034: min_prob 0.5 -> 0.9
 17:46:01 [01:46:01] Analysing order-book imbalance: Polymarket -0.67, Binance -0.37
 17:47:30 [01:47:30] Generating prediction: DOWN (P(up) 4%, market 4%)
+17:48:22 [01:48:22] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 12:50PM-12:55PM ET
