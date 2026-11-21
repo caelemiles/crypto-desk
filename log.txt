@@ -34,3 +34,5 @@
 18:28:32 [02:28:32] Prediction DOWN at 150s was incorrect
 18:28:32 [02:28:32] Updating learning dataset
 18:28:32 [02:28:32] Explained why the market went UP (see Market explanations)
+18:29:57 [02:29:57] Opportunity rejected: no side had enough edge after fees
+18:30:06 [02:30:06] Collecting market data (order book, Chainlink, Binance, futures)
