@@ -157,3 +157,5 @@
 16:40:51 [00:40:51] Updating learning dataset
 16:40:51 [00:40:51] Explained why the market went DOWN (see Market explanations)
 16:41:01 [00:41:01] Analysing order-book imbalance: Polymarket -0.40, Binance -0.17
+16:42:31 [00:42:31] Generating prediction: DOWN (P(up) 40%, market 40%)
+16:43:21 [00:43:21] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 11:45AM-11:50AM ET
