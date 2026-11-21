@@ -57,3 +57,9 @@
 18:39:55 [02:39:55] Opportunity rejected: no side had enough edge after fees
 18:40:06 [02:40:06] Collecting market data (order book, Chainlink, Binance, futures)
 18:41:02 [02:41:02] Analysing order-book imbalance: Polymarket -0.08, Binance +0.02
+18:42:31 [02:42:31] Generating prediction: DOWN (P(up) 20%, market 20%)
+18:42:46 [02:42:46] Market resolved UP: eth-updown-5m-1795286100 (TWAP 1,681.61 -> 1,682.86)
+18:42:46 [02:42:46] Comparing prediction with actual outcome
+18:42:46 [02:42:46] Prediction UP at 150s was correct
+18:42:46 [02:42:46] Updating learning dataset
+18:42:46 [02:42:46] Explained why the market went UP (see Market explanations)
