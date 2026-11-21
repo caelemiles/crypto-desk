@@ -1,0 +1,8 @@
+18:15:48 [02:15:48] Controller started (run 44932048768); settings from github; paper trading only
+18:15:54 [02:15:54] New ETH five-minute market detected: Ethereum Up or Down - November 21, 1:15PM-1:20PM ET
+18:15:54 [02:15:54] Collecting market data (order book, Chainlink, Binance, futures)
+18:15:54 [02:15:54] Market resolved DOWN: eth-updown-5m-1795284300
+18:15:54 [02:15:54] Comparing prediction with actual outcome
+18:15:54 [02:15:54] Prediction DOWN at 150s was correct
+18:15:54 [02:15:54] Updating learning dataset
+18:15:54 [02:15:54] Explained why the market went DOWN (see Market explanations)
