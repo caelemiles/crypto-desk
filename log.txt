@@ -251,3 +251,9 @@
 17:21:30 [01:21:30] Simulated trade T00336: maker bid filled, 15.55 UP @ $0.650, no fee (model 70%)
 17:22:30 [01:22:30] Generating prediction: UP (P(up) 74%, market 74%)
 17:23:20 [01:23:20] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 12:25PM-12:30PM ET
+17:25:05 [01:25:05] Collecting market data (order book, Chainlink, Binance, futures)
+17:25:39 [01:25:39] Market resolved DOWN: btc-updown-5m-1795281300 (TWAP 60,138.12 -> 60,062.28)
+17:25:39 [01:25:39] Comparing prediction with actual outcome
+17:25:39 [01:25:39] Prediction DOWN at 150s was correct
+17:25:39 [01:25:39] Updating learning dataset
+17:25:39 [01:25:39] Explained why the market went DOWN (see Market explanations)
