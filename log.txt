@@ -47,3 +47,5 @@
 18:35:06 [02:35:06] Explained why the market went UP (see Market explanations)
 18:35:08 [02:35:08] Collecting market data (order book, Chainlink, Binance, futures)
 18:36:00 [02:36:00] Analysing order-book imbalance: Polymarket -0.16, Binance +0.04
+18:37:30 [02:37:30] Generating prediction: UP (P(up) 55%, market 55%)
+18:38:20 [02:38:20] New ETH five-minute market detected: Ethereum Up or Down - November 21, 1:40PM-1:45PM ET
