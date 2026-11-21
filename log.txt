@@ -216,3 +216,9 @@
 17:06:00 [01:06:00] Analysing order-book imbalance: Polymarket -0.83, Binance -0.26
 17:07:31 [01:07:31] Generating prediction: DOWN (P(up) 40%, market 42%)
 17:08:21 [01:08:21] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 12:10PM-12:15PM ET
+17:10:06 [01:10:06] Collecting market data (order book, Chainlink, Binance, futures)
+17:10:10 [01:10:10] Placed a maker bid: UP at $0.63 (model 66%, no fee if filled)
+17:10:25 [01:10:25] Market resolved UP: btc-updown-5m-1795280400 (TWAP 59,923.93 -> 60,059.29)
+17:10:25 [01:10:25] Comparing prediction with actual outcome
+17:10:25 [01:10:25] Updating learning dataset
+17:10:25 [01:10:25] Explained why the market went UP (see Market explanations)
