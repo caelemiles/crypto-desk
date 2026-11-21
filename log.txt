@@ -371,3 +371,4 @@
 18:20:34 [02:20:34] Updating learning dataset
 18:20:34 [02:20:34] Explained why the market went DOWN (see Market explanations)
 18:21:00 [02:21:00] Analysing order-book imbalance: Polymarket +0.37, Binance +0.06
+18:22:31 [02:22:31] Generating prediction: DOWN (P(up) 20%, market 20%)
