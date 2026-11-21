@@ -202,3 +202,4 @@
 17:00:19 [01:00:19] Explained why the market went DOWN (see Market explanations)
 17:01:01 [01:01:01] Maker bid for UP at $0.63 cancelled: price never came to it
 17:01:01 [01:01:01] Analysing order-book imbalance: Polymarket -0.54, Binance +0.17
+17:03:21 [01:03:21] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 12:05PM-12:10PM ET
