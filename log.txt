@@ -91,3 +91,4 @@
 16:11:01 [00:11:01] Maker bid for UP at $0.55 cancelled: price never came to it
 16:11:01 [00:11:01] Analysing order-book imbalance: Polymarket -0.81, Binance +0.15
 16:12:30 [00:12:30] Generating prediction: DOWN (P(up) 20%, market 22%)
+16:13:21 [00:13:21] New BTC five-minute market detected: Bitcoin Up or Down - November 21, 11:15AM-11:20AM ET
