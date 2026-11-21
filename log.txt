@@ -420,3 +420,4 @@
 18:45:11 [02:45:11] Comparing prediction with actual outcome
 18:45:11 [02:45:11] Updating learning dataset
 18:45:11 [02:45:11] Explained why the market went UP (see Market explanations)
+18:46:01 [02:46:01] Analysing order-book imbalance: Polymarket -0.45, Binance -0.30
