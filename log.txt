@@ -236,3 +236,4 @@
 17:15:35 [01:15:35] Explained why the market went DOWN (see Market explanations)
 17:16:00 [01:16:00] Maker bid for DOWN at $0.57 cancelled: price never came to it
 17:16:00 [01:16:00] Analysing order-book imbalance: Polymarket -0.72, Binance +0.02
+17:17:31 [01:17:31] Generating prediction: DOWN (P(up) 8%, market 8%)
