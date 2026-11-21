@@ -68,3 +68,4 @@
 18:45:05 [02:45:05] Collecting market data (order book, Chainlink, Binance, futures)
 18:46:02 [02:46:02] Analysing order-book imbalance: Polymarket +0.16, Binance -0.35
 18:47:32 [02:47:32] Generating prediction: NO CALL (P(up) 52%, market 52%)
+18:48:21 [02:48:21] New ETH five-minute market detected: Ethereum Up or Down - November 21, 1:50PM-1:55PM ET
